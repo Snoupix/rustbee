@@ -1,0 +1,8 @@
+[package]
+name = "rustbee"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bluer = { version = "0.17.1", features = ["full"] }
+tokio = { version = "1.38.0", features = ["rt-multi-thread"] }
