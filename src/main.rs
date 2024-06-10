@@ -31,8 +31,8 @@ async fn main() -> bluer::Result<()> {
     Ok(())
 }
 
-async fn job(hue_bar: HueBar) -> bluer::Result<()> {
-    hue_bar.connect().await?;
+async fn job(mut hue_bar: HueBar) -> bluer::Result<()> {
+    hue_bar.init_connection().await?;
 
     // println!("power is: {:?}", bar_one.get_power_state(POWER).await?);
     if !hue_bar.set_power_state(POWER, false).await? {

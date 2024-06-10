@@ -1,18 +1,36 @@
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::pin::Pin;
+use std::time::Duration;
 
 use bluer::{
-    gatt::remote::{Characteristic, Service},
+    gatt::remote::{Characteristic as BlueCharacteristic, Service as BlueService},
     AdapterEvent, Address, Device, Session,
 };
 use futures::StreamExt;
+use tokio::time::sleep;
 use uuid::Uuid;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct HueBar {
     pub device: Option<Device>,
     pub addr: Address,
+    pub services: Option<Vec<Service>>,
+}
+
+#[derive(Debug)]
+pub struct Service {
+    pub uuid: Uuid,
+    pub id: u16,
+    pub characteristics: Vec<Characteristic>,
+    pub inner: BlueService,
+}
+
+#[derive(Debug)]
+pub struct Characteristic {
+    pub uuid: Uuid,
+    pub id: u16,
+    pub inner: BlueCharacteristic,
 }
 
 impl HueBar {
@@ -20,7 +38,10 @@ impl HueBar {
         // TODO: On init, load every services onto the struct so it
         // avoids to iterate over them all since bluer only indexes
         // services and characteristics by ID and not UUID
-        Self { device: None, addr }
+        Self {
+            addr,
+            ..Default::default()
+        }
     }
 
     fn set_device(&mut self, device: Device) {
@@ -29,6 +50,33 @@ impl HueBar {
 
     fn unset_device(&mut self) {
         self.device = None;
+    }
+
+    async fn set_services(&mut self) -> bluer::Result<()> {
+        let mut services = Vec::new();
+
+        for service in self.services().await? {
+            let mut characs = Vec::new();
+            for charac in service.characteristics().await? {
+                characs.push(Characteristic {
+                    uuid: charac.uuid().await?,
+                    id: charac.id(),
+                    inner: charac,
+                });
+            }
+
+            services.push(Service {
+                uuid: service.uuid().await?,
+                id: service.id(),
+                characteristics: characs,
+                inner: service,
+            });
+
+            sleep(Duration::from_millis(100)).await;
+        }
+
+        self.services = Some(services);
+        Ok(())
     }
 
     pub async fn get_power_state(&self, power: Uuid) -> bluer::Result<Option<bool>> {
@@ -41,20 +89,60 @@ impl HueBar {
         Ok(None)
     }
 
+    // pub async fn set_power_state(&self, power: Uuid, state: bool) -> bluer::Result<bool> {
+    //     let characteristic = find_charac(self, power).await?;
+    //     if let Some(charac) = characteristic {
+    //         charac.write(&[state as u8]).await?;
+    //         return Ok(true);
+    //     }
+    //
+    //     Ok(false)
+    // }
+
     pub async fn set_power_state(&self, power: Uuid, state: bool) -> bluer::Result<bool> {
-        let characteristic = find_charac(self, power).await?;
-        if let Some(charac) = characteristic {
-            charac.write(&[state as u8]).await?;
-            return Ok(true);
+        if let Some(service) = self
+            .services
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|&s| s.characteristics.iter().any(|c| c.uuid == power))
+        {
+            if let Some(charac) = service.characteristics.iter().find(|c| c.uuid == power) {
+                charac.write(&[state as u8]).await?;
+                return Ok(true);
+            }
         }
 
         Ok(false)
+    }
+
+    pub async fn init_connection(&mut self) -> bluer::Result<()> {
+        self.connect().await?;
+        sleep(Duration::from_millis(200)).await;
+        self.set_services().await
+    }
+}
+
+impl Deref for Service {
+    type Target = BlueService;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl Deref for Characteristic {
+    type Target = BlueCharacteristic;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }
 
 impl Deref for HueBar {
     type Target = Device;
 
+    /// Be sure to use it wisely since it NEEDS to have the device set
     fn deref(&self) -> &Self::Target {
         self.device.as_ref().unwrap()
     }
@@ -111,7 +199,7 @@ pub async fn get_devices(addrs: &[[u8; 6]]) -> bluer::Result<Vec<HueBar>> {
     Ok(addresses.into_values().collect())
 }
 
-pub async fn find_service(device: &Device, uuid: Uuid) -> bluer::Result<Option<Service>> {
+pub async fn find_service(device: &Device, uuid: Uuid) -> bluer::Result<Option<BlueService>> {
     for service in device.services().await.unwrap().into_iter() {
         if service.uuid().await.unwrap() == uuid {
             return Ok(Some(service));
@@ -121,7 +209,7 @@ pub async fn find_service(device: &Device, uuid: Uuid) -> bluer::Result<Option<S
     Ok(None)
 }
 
-pub async fn find_charac(device: &Device, uuid: Uuid) -> bluer::Result<Option<Characteristic>> {
+pub async fn find_charac(device: &Device, uuid: Uuid) -> bluer::Result<Option<BlueCharacteristic>> {
     for service in device.services().await?.into_iter() {
         for charac in service.characteristics().await? {
             if charac.uuid().await? == uuid {
@@ -137,7 +225,7 @@ pub async fn get_charac(
     device: &Device,
     service: Uuid,
     uuid: Uuid,
-) -> bluer::Result<Option<Characteristic>> {
+) -> bluer::Result<Option<BlueCharacteristic>> {
     for service in device.services().await?.into_iter() {
         for charac in service.characteristics().await? {
             if charac.uuid().await? == uuid {
