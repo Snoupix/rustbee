@@ -1,84 +1,116 @@
-use std::{ops::Deref, pin::Pin};
+mod hueblue;
 
-use bluer::{AdapterEvent, Address, Device, Session};
-use futures::StreamExt;
+use uuid::{uuid, Uuid};
 
-const HUE_BAR_1_ADDR: [u8; 6] = [0xEC, 0x27, 0xA7, 0xD6, 0x5A, 0x9C];
-const HUE_BAR_2_ADDR: [u8; 6] = [0xE8, 0xD4, 0xEA, 0xC4, 0x62, 0x00];
+const HUE_BAR_1_ADDR: [u8; 6] = [0xE8, 0xD4, 0xEA, 0xC4, 0x62, 0x00];
+const HUE_BAR_2_ADDR: [u8; 6] = [0xEC, 0x27, 0xA7, 0xD6, 0x5A, 0x9C];
 
-struct HueBar {
-    device: Option<Device>,
-    addr: Address,
-}
+// Thanks to https://gist.github.com/shinyquagsire23/f7907fdf6b470200702e75a30135caf3 for the UUIDs
+const LIGHT_SERVICE: Uuid = uuid!("932c32bd-0000-47a2-835a-a8d455b859dd");
 
-impl HueBar {
-    fn new(addr: Address) -> Self {
-        Self { device: None, addr }
-    }
-
-    fn set_device(&mut self, device: Device) {
-        self.device = Some(device);
-    }
-
-    fn unset_device(&mut self) {
-        self.device = None;
-    }
-}
-
-impl Deref for HueBar {
-    type Target = Device;
-
-    fn deref(&self) -> &Self::Target {
-        self.device.as_ref().unwrap()
-    }
-}
+const MODEL: Uuid = uuid!("00002a24-0000-1000-8000-00805f9b34fb");
+const POWER: Uuid = uuid!("932c32bd-0002-47a2-835a-a8d455b859dd");
+const COLOR: Uuid = uuid!("932c32bd-0005-47a2-835a-a8d455b859dd");
+const BRIGHTNESS: Uuid = uuid!("932c32bd-0003-47a2-835a-a8d455b859dd");
 
 #[tokio::main]
 async fn main() -> bluer::Result<()> {
-    let session = Session::new().await?;
-    let adapter = session.default_adapter().await?;
+    let mut hue_bars = hueblue::get_devices(&[HUE_BAR_1_ADDR, HUE_BAR_2_ADDR])
+        .await?
+        .into_iter();
+    let (bar_one, bar_two) = (hue_bars.next().unwrap(), hue_bars.next().unwrap());
+    // println!("{:?} {:?}", bar_one, _bar_two);
 
-    if !adapter.is_powered().await? {
-        adapter.set_powered(true).await?;
-    }
+    let mut tasks = Vec::new();
 
-    let mut discovery = adapter.discover_devices().await?;
-    let mut pinned_disco = unsafe { Pin::new_unchecked(&mut discovery) };
-
-    let mut bar_one = HueBar::new(Address::new(HUE_BAR_1_ADDR));
-    let mut bar_two = HueBar::new(Address::new(HUE_BAR_2_ADDR));
-
-    while let Some(event) = pinned_disco.next().await {
-        match event {
-            AdapterEvent::DeviceAdded(addr) => {
-                if addr != bar_one.addr && addr != bar_two.addr {
-                    continue;
-                }
-
-                if addr == bar_one.addr {
-                    bar_one.set_device(adapter.device(addr)?);
-                    println!("{:?}", bar_one.device.as_ref().unwrap().name().await?);
-                } else if addr == bar_two.addr {
-                    bar_two.set_device(adapter.device(addr)?);
-                    println!("{:?}", bar_two.device.as_ref().unwrap().name().await?);
-                }
-
-                if bar_one.device.is_some() && bar_two.device.is_some() {
-                    break;
-                }
-            }
-            AdapterEvent::DeviceRemoved(addr) => {
-                if addr == bar_one.addr {
-                    bar_one.unset_device();
-                } else if addr == bar_two.addr {
-                    bar_two.unset_device();
-                }
-            }
-            _ => (),
+    tasks.push(tokio::spawn(async move {
+        bar_one.connect().await.unwrap();
+        if !bar_one.set_power_state(POWER, false).await.unwrap() {
+            println!(
+                "[ERROR] Failed to write power state to hue bar address: {}",
+                bar_one.addr
+            );
         }
-    }
+        bar_one.disconnect().await.unwrap();
+    }));
 
-    adapter.set_powered(false).await?;
+    tasks.push(tokio::spawn(async move {
+        bar_two.connect().await.unwrap();
+
+        if !bar_two.set_power_state(POWER, false).await.unwrap() {
+            println!(
+                "[ERROR] Failed to write power state to hue bar address: {}",
+                bar_two.addr
+            );
+        }
+
+        bar_two.disconnect().await.unwrap();
+    }));
+
+    for y in tasks {
+        y.await?;
+    }
 
     Ok(())
 }
+
+// for service in bar_one.services().await? {
+//     println!("{:?}", service.all_properties().await?);
+//     println!("{:?}", service.characteristics().await?);
+// }
+
+// [Primary(true), Uuid(0000180a-0000-1000-8000-00805f9b34fb), Includes([])]
+// [
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 14, id: 15 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 14, id: 19 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 14, id: 17 }
+// ]
+//
+// [Primary(true), Uuid(9da2ddf1-0000-44d0-909c-3f3d3cb34a7b), Includes([])]
+// [
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 102, id: 103 }
+// ]
+//
+// [Primary(true), Uuid(b8843add-0000-4aa1-8794-c3f462030bda), Includes([])]
+// [
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 92, id: 98 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 92, id: 93 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 92, id: 100 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 92, id: 95 }
+// ]
+//
+// [Primary(true), Uuid(0000fe0f-0000-1000-8000-00805f9b34fb), Includes([])]
+// [
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 21, id: 47 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 21, id: 49 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 21, id: 45 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 21, id: 24 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 21, id: 39 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 21, id: 43 },
+//     Characteristic { adapter_name:hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 21, id: 36 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 21, id: 31 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 21, id: 28 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 21, id: 41 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 21, id: 33 },
+//     Characteristic { adapter_name: hci0,device_address: EC:27:A7:D6:5A:9C, service_id: 21, id: 22 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 21, id: 26 }
+// ]
+//
+// [Primary(true), Uuid(932c32bd-0000-47a2-835a-a8d455b859dd), Includes([])]
+// [
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 51, id: 57 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 51, id: 66 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 51, id: 60 },
+//     Characteristic{ adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 51, id: 63 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 51, id: 54 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 51, id: 68 },
+//     Characteristic { adapter_name:hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 51, id: 71 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 51, id: 52 }
+// ]
+//
+// [Primary(true), Uuid(00001801-0000-1000-8000-00805f9b34fb), Includes([])]
+// [
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 1, id: 2 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 1, id: 5 },
+//     Characteristic { adapter_name: hci0, device_address: EC:27:A7:D6:5A:9C, service_id: 1, id: 7 }
+// ]

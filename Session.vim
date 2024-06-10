@@ -13,13 +13,14 @@ if &shortmess =~ 'A'
 else
   set shortmess=aoO
 endif
-badd +50 src/main.rs
-badd +1 Cargo.toml
+badd +8 Cargo.toml
+badd +42 src/main.rs
+badd +48 src/hueblue.rs
 argglobal
 %argdel
 edit src/main.rs
 argglobal
-balt Cargo.toml
+balt src/hueblue.rs
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -30,12 +31,12 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 50 - ((30 * winheight(0) + 28) / 56)
+let s:l = 42 - ((41 * winheight(0) + 28) / 56)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 50
-normal! 053|
+keepjumps 42
+normal! 011|
 tabnext 1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0 && getbufvar(s:wipebuf, '&buftype') isnot# 'terminal'
   silent exe 'bwipe ' . s:wipebuf
