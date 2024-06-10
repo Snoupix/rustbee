@@ -1,5 +1,7 @@
 mod hueblue;
 
+use hueblue::*;
+
 use uuid::{uuid, Uuid};
 
 const HUE_BAR_1_ADDR: [u8; 6] = [0xE8, 0xD4, 0xEA, 0xC4, 0x62, 0x00];
@@ -15,41 +17,32 @@ const BRIGHTNESS: Uuid = uuid!("932c32bd-0003-47a2-835a-a8d455b859dd");
 
 #[tokio::main]
 async fn main() -> bluer::Result<()> {
-    let mut hue_bars = hueblue::get_devices(&[HUE_BAR_1_ADDR, HUE_BAR_2_ADDR])
-        .await?
-        .into_iter();
-    let (bar_one, bar_two) = (hue_bars.next().unwrap(), hue_bars.next().unwrap());
-    // println!("{:?} {:?}", bar_one, _bar_two);
-
     let mut tasks = Vec::new();
+    let hue_bars = get_devices(&[HUE_BAR_1_ADDR, HUE_BAR_2_ADDR]).await?;
 
-    tasks.push(tokio::spawn(async move {
-        bar_one.connect().await.unwrap();
-        if !bar_one.set_power_state(POWER, false).await.unwrap() {
-            println!(
-                "[ERROR] Failed to write power state to hue bar address: {}",
-                bar_one.addr
-            );
-        }
-        bar_one.disconnect().await.unwrap();
-    }));
-
-    tasks.push(tokio::spawn(async move {
-        bar_two.connect().await.unwrap();
-
-        if !bar_two.set_power_state(POWER, false).await.unwrap() {
-            println!(
-                "[ERROR] Failed to write power state to hue bar address: {}",
-                bar_two.addr
-            );
-        }
-
-        bar_two.disconnect().await.unwrap();
-    }));
-
-    for y in tasks {
-        y.await?;
+    for hue_bar in hue_bars {
+        tasks.push(tokio::spawn(job(hue_bar)));
     }
+
+    for task in tasks {
+        task.await??;
+    }
+
+    Ok(())
+}
+
+async fn job(hue_bar: HueBar) -> bluer::Result<()> {
+    hue_bar.connect().await?;
+
+    // println!("power is: {:?}", bar_one.get_power_state(POWER).await?);
+    if !hue_bar.set_power_state(POWER, false).await? {
+        println!(
+            "[ERROR] Failed to write power state to hue bar address: {}",
+            hue_bar.addr
+        );
+    }
+
+    hue_bar.disconnect().await?;
 
     Ok(())
 }
