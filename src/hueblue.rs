@@ -99,16 +99,63 @@ impl HueBar {
     //     Ok(false)
     // }
 
-    pub async fn set_power_state(&self, power: Uuid, state: bool) -> bluer::Result<bool> {
+    pub async fn set_power_state(
+        &self,
+        service: Uuid,
+        charac: Uuid,
+        state: bool,
+    ) -> bluer::Result<bool> {
         if let Some(service) = self
             .services
             .as_ref()
             .unwrap()
             .iter()
-            .find(|&s| s.characteristics.iter().any(|c| c.uuid == power))
+            .find(|&s| s.uuid == service)
         {
-            if let Some(charac) = service.characteristics.iter().find(|c| c.uuid == power) {
+            if let Some(charac) = service.characteristics.iter().find(|c| c.uuid == charac) {
                 charac.write(&[state as u8]).await?;
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    pub async fn read_gatt_char(
+        &mut self,
+        service: Uuid,
+        charac: Uuid,
+    ) -> bluer::Result<Option<Vec<u8>>> {
+        if let Some(service) = self
+            .services
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|&s| s.uuid == service)
+        {
+            if let Some(charac) = service.characteristics.iter().find(|c| c.uuid == charac) {
+                return Ok(Some(charac.read().await?));
+            }
+        }
+
+        Ok(None)
+    }
+
+    pub async fn write_gatt_char(
+        &self,
+        service: Uuid,
+        charac: Uuid,
+        bytes: &[u8],
+    ) -> bluer::Result<bool> {
+        if let Some(service) = self
+            .services
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|&s| s.uuid == service)
+        {
+            if let Some(charac) = service.characteristics.iter().find(|c| c.uuid == charac) {
+                charac.write(bytes).await?;
                 return Ok(true);
             }
         }
