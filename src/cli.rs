@@ -49,34 +49,70 @@ impl Command {
 
         match this {
             Self::PairAndTrust => {
-                hue_bar.pair().await?;
-                hue_bar.set_trusted(true).await?;
-                println!("Done !");
+                let mut retries = 2;
+                let mut error = None;
+                while !hue_bar.is_paired().await? {
+                    if retries <= 0 {
+                        panic!(
+                            "[ERROR] Failed to pair device {} after 2 attempts {:?}",
+                            hue_bar.addr, error
+                        );
+                    }
+                    error = match hue_bar.pair().await {
+                        Ok(_) => break,
+                        Err(err) => Some(err),
+                    };
+                    retries -= 1;
+                }
+
+                retries = 2;
+                error = None;
+                while !hue_bar.is_trusted().await? {
+                    if retries <= 0 {
+                        panic!(
+                            "[ERROR] Failed to \"trust\" device {} after 2 attempts {:?}",
+                            hue_bar.addr, error
+                        );
+                    }
+                    error = match hue_bar.set_trusted(true).await {
+                        Ok(_) => break,
+                        Err(err) => Some(err),
+                    };
+                    retries -= 1;
+                }
             }
             Self::Power { ref state } => {
                 if let Some(state) = state {
                     if !hue_bar
-                        .set_power_state(LIGHT_SERVICE, POWER, matches!(*state, State::On))
+                        .write_gatt_char(
+                            &LIGHT_SERVICE,
+                            &POWER,
+                            &[matches!(*state, State::On) as _],
+                        )
                         .await?
                     {
-                        println!(
+                        eprintln!(
                             "[ERROR] Failed to write power state to hue bar address: {}",
                             hue_bar.addr
                         );
                     }
                 } else {
-                    println!(
-                        "Device is {}",
-                        if hue_bar
-                            .get_power_state(POWER)
-                            .await?
-                            .expect("Cannot get power state")
-                        {
-                            "ON"
-                        } else {
-                            "OFF"
-                        }
-                    );
+                    let read = hue_bar.read_gatt_char(&LIGHT_SERVICE, &POWER).await?;
+
+                    if let Some(bytes) = read {
+                        println!(
+                            "Device is {}",
+                            if *bytes.first().unwrap() == true as _ {
+                                "ON"
+                            } else {
+                                "OFF"
+                            }
+                        );
+                    } else {
+                        eprintln!(
+                            "[ERROR] Characteristic \"{POWER}\" for \"{LIGHT_SERVICE}\" not found for device {}", hue_bar.addr
+                        );
+                    }
                 }
             }
             Self::ColorRgb { r, g, b } => todo!(),
@@ -84,11 +120,11 @@ impl Command {
             Self::ColorXy { x, y } => {
                 if x.is_none() || y.is_none() {
                     let buf = hue_bar
-                        .read_gatt_char(LIGHT_SERVICE, COLOR)
+                        .read_gatt_char(&LIGHT_SERVICE, &COLOR)
                         .await?
                         .expect("Cannot get xy colors");
 
-                    println!(
+                    eprintln!(
                         "Device color is x: {}, y: {}",
                         u16::from_le_bytes([buf[0], buf[1]]) / 0xFFFF,
                         u16::from_le_bytes([buf[2], buf[3]]) / 0xFFFF,
@@ -97,20 +133,27 @@ impl Command {
             }
             Self::Brightness { value } => match value {
                 Some(value) => {
+                    assert!(
+                        (0..=100).contains(&value),
+                        "[ERROR] Brightness value must be between 0 and 100 inclusive"
+                    );
+
                     if !hue_bar
-                        .write_gatt_char(LIGHT_SERVICE, BRIGHTNESS, &[value]) // TODO: Fix, it must
-                        // be converted to a
-                        // 2 bytes value
+                        .write_gatt_char(
+                            &LIGHT_SERVICE,
+                            &BRIGHTNESS,
+                            &[(((value as f32) / 100.) * 0xff as f32) as u8],
+                        )
                         .await?
                     {
-                        panic!("[ERROR] Cannot get characteristic for brightness setter")
+                        eprintln!(
+                            "[ERROR] Characteristic \"{POWER}\" for \"{LIGHT_SERVICE}\" not found for device {}", hue_bar.addr
+                        );
                     }
-
-                    println!("Done !",);
                 }
                 None => {
                     let brightness = (*hue_bar
-                        .read_gatt_char(LIGHT_SERVICE, BRIGHTNESS)
+                        .read_gatt_char(&LIGHT_SERVICE, &BRIGHTNESS)
                         .await?
                         .expect("Cannot get brightness level")
                         .first()

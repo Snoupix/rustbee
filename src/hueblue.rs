@@ -72,68 +72,26 @@ impl HueBar {
                 inner: service,
             });
 
-            sleep(Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(150)).await;
         }
 
         self.services = Some(services);
         Ok(())
     }
 
-    pub async fn get_power_state(&self, power: Uuid) -> bluer::Result<Option<bool>> {
-        let characteristic = find_charac(self, power).await?;
-        if let Some(charac) = characteristic {
-            let res = charac.read().await?;
-            return Ok(Some(*res.first().unwrap() == 1));
-        }
-
-        Ok(None)
-    }
-
-    // pub async fn set_power_state(&self, power: Uuid, state: bool) -> bluer::Result<bool> {
-    //     let characteristic = find_charac(self, power).await?;
-    //     if let Some(charac) = characteristic {
-    //         charac.write(&[state as u8]).await?;
-    //         return Ok(true);
-    //     }
-    //
-    //     Ok(false)
-    // }
-
-    pub async fn set_power_state(
-        &self,
-        service: Uuid,
-        charac: Uuid,
-        state: bool,
-    ) -> bluer::Result<bool> {
-        if let Some(service) = self
-            .services
-            .as_ref()
-            .unwrap()
-            .iter()
-            .find(|&s| s.uuid == service)
-        {
-            if let Some(charac) = service.characteristics.iter().find(|c| c.uuid == charac) {
-                charac.write(&[state as u8]).await?;
-                return Ok(true);
-            }
-        }
-
-        Ok(false)
-    }
-
     pub async fn read_gatt_char(
         &mut self,
-        service: Uuid,
-        charac: Uuid,
+        service: &Uuid,
+        charac: &Uuid,
     ) -> bluer::Result<Option<Vec<u8>>> {
         if let Some(service) = self
             .services
             .as_ref()
             .unwrap()
             .iter()
-            .find(|&s| s.uuid == service)
+            .find(|&s| &s.uuid == service)
         {
-            if let Some(charac) = service.characteristics.iter().find(|c| c.uuid == charac) {
+            if let Some(charac) = service.characteristics.iter().find(|&c| &c.uuid == charac) {
                 return Ok(Some(charac.read().await?));
             }
         }
@@ -143,8 +101,8 @@ impl HueBar {
 
     pub async fn write_gatt_char(
         &self,
-        service: Uuid,
-        charac: Uuid,
+        service: &Uuid,
+        charac: &Uuid,
         bytes: &[u8],
     ) -> bluer::Result<bool> {
         if let Some(service) = self
@@ -152,9 +110,9 @@ impl HueBar {
             .as_ref()
             .unwrap()
             .iter()
-            .find(|&s| s.uuid == service)
+            .find(|&s| &s.uuid == service)
         {
-            if let Some(charac) = service.characteristics.iter().find(|c| c.uuid == charac) {
+            if let Some(charac) = service.characteristics.iter().find(|&c| &c.uuid == charac) {
                 charac.write(bytes).await?;
                 return Ok(true);
             }
@@ -164,8 +122,24 @@ impl HueBar {
     }
 
     pub async fn init_connection(&mut self) -> bluer::Result<()> {
-        self.connect().await?;
-        sleep(Duration::from_millis(200)).await;
+        let mut retries = 2;
+        loop {
+            if self.is_connected().await? {
+                break;
+            }
+
+            if retries <= 0 {
+                panic!(
+                    "[ERROR] Failed to connect to {} after 2 attempts",
+                    self.addr
+                );
+            }
+
+            let _ = self.connect().await;
+
+            retries -= 1;
+        }
+        sleep(Duration::from_millis(150)).await;
         self.set_services().await
     }
 }
@@ -220,7 +194,7 @@ pub async fn get_devices(addrs: &[[u8; 6]]) -> bluer::Result<Vec<HueBar>> {
                     continue;
                 }
 
-                let hue_bar = addresses.get_mut(addr_slice).unwrap(); // Shouldn't panic because of
+                let hue_bar = addresses.get_mut(addr_slice).unwrap(); // Shouldn't panic
                 hue_bar.set_device(adapter.device(addr)?);
 
                 if !addresses.iter().any(|(_, v)| v.device.is_none()) {
@@ -236,7 +210,7 @@ pub async fn get_devices(addrs: &[[u8; 6]]) -> bluer::Result<Vec<HueBar>> {
                     continue;
                 }
 
-                let hue_bar = addresses.get_mut(addr_slice).unwrap(); // Shouldn't panic because of
+                let hue_bar = addresses.get_mut(addr_slice).unwrap(); // Shouldn't panic
                 hue_bar.unset_device();
             }
             _ => (),
