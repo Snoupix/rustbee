@@ -14,9 +14,10 @@ else
   set shortmess=aoO
 endif
 badd +8 Cargo.toml
-badd +37 src/main.rs
-badd +142 src/hueblue.rs
-badd +146 src/cli.rs
+badd +1 src/main.rs
+badd +128 src/hueblue.rs
+badd +200 src/cli.rs
+badd +1 run.sh
 argglobal
 %argdel
 edit src/cli.rs
@@ -39,12 +40,12 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 141 - ((27 * winheight(0) + 28) / 56)
+let s:l = 204 - ((32 * winheight(0) + 28) / 56)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 141
-normal! 031|
+keepjumps 204
+normal! 035|
 lcd ~/work/rustbee
 tabnext 1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0 && getbufvar(s:wipebuf, '&buftype') isnot# 'terminal'

@@ -1,6 +1,9 @@
+use std::f64;
+
 use crate::*;
 
 use clap::{Parser, Subcommand};
+use color_space::{FromRgb, Rgb, Xyz};
 
 #[derive(Debug, Parser)]
 pub struct Args {
@@ -27,8 +30,8 @@ pub enum Command {
         hex: Option<String>,
     },
     ColorXy {
-        x: Option<i16>,
-        y: Option<i16>,
+        x: Option<f64>,
+        y: Option<f64>,
     },
     Brightness {
         value: Option<u8>,
@@ -47,40 +50,10 @@ impl Command {
             hue_bar.init_connection().await?;
         }
 
-        match this {
-            Self::PairAndTrust => {
-                let mut retries = 2;
-                let mut error = None;
-                while !hue_bar.is_paired().await? {
-                    if retries <= 0 {
-                        panic!(
-                            "[ERROR] Failed to pair device {} after 2 attempts {:?}",
-                            hue_bar.addr, error
-                        );
-                    }
-                    error = match hue_bar.pair().await {
-                        Ok(_) => break,
-                        Err(err) => Some(err),
-                    };
-                    retries -= 1;
-                }
+        hue_bar.ensure_pairing().await?;
 
-                retries = 2;
-                error = None;
-                while !hue_bar.is_trusted().await? {
-                    if retries <= 0 {
-                        panic!(
-                            "[ERROR] Failed to \"trust\" device {} after 2 attempts {:?}",
-                            hue_bar.addr, error
-                        );
-                    }
-                    error = match hue_bar.set_trusted(true).await {
-                        Ok(_) => break,
-                        Err(err) => Some(err),
-                    };
-                    retries -= 1;
-                }
-            }
+        match this {
+            Self::PairAndTrust => (),
             Self::Power { ref state } => {
                 if let Some(state) = state {
                     if !hue_bar
@@ -110,25 +83,9 @@ impl Command {
                         );
                     } else {
                         eprintln!(
-                            "[ERROR] Characteristic \"{POWER}\" for \"{LIGHT_SERVICE}\" not found for device {}", hue_bar.addr
+                            "[ERROR] Service or Characteristic \"{POWER}\" for \"{LIGHT_SERVICE}\" not found for device {}", hue_bar.addr
                         );
                     }
-                }
-            }
-            Self::ColorRgb { r, g, b } => todo!(),
-            Self::ColorHex { hex } => todo!(),
-            Self::ColorXy { x, y } => {
-                if x.is_none() || y.is_none() {
-                    let buf = hue_bar
-                        .read_gatt_char(&LIGHT_SERVICE, &COLOR)
-                        .await?
-                        .expect("Cannot get xy colors");
-
-                    eprintln!(
-                        "Device color is x: {}, y: {}",
-                        u16::from_le_bytes([buf[0], buf[1]]) / 0xFFFF,
-                        u16::from_le_bytes([buf[2], buf[3]]) / 0xFFFF,
-                    );
                 }
             }
             Self::Brightness { value } => match value {
@@ -147,7 +104,7 @@ impl Command {
                         .await?
                     {
                         eprintln!(
-                            "[ERROR] Characteristic \"{POWER}\" for \"{LIGHT_SERVICE}\" not found for device {}", hue_bar.addr
+                            "[ERROR] Service or Characteristic \"{POWER}\" for \"{LIGHT_SERVICE}\" not found for device {}", hue_bar.addr
                         );
                     }
                 }
@@ -166,6 +123,114 @@ impl Command {
                     );
                 }
             },
+            Self::ColorHex { .. } | Self::ColorXy { .. } | Self::ColorRgb { .. } => {
+                let mut read = false;
+                let (mut x, mut y) = (0., 0.);
+
+                match this {
+                    Self::ColorRgb {
+                        ref r,
+                        ref g,
+                        ref b,
+                    } => {
+                        if r.is_none() || g.is_none() || b.is_none() {
+                            read = true;
+                        } else {
+                            let xyz = Xyz::from_rgb(&Rgb::new(
+                                r.unwrap() as _,
+                                g.unwrap() as _,
+                                b.unwrap() as _,
+                            ));
+                            (x, y) = (xyz.x / 100., xyz.y / 100.);
+                        }
+                    }
+                    Self::ColorHex { ref hex } => {
+                        if hex.is_none() {
+                            read = true;
+                        } else {
+                            let hex = hex.clone().unwrap();
+                            assert!(hex.len() == 6, "Hex lenght must be 6 like so: ffFF00");
+                            let odd_it = hex.chars().skip(1).step_by(2);
+                            let [r, g, b] = hex
+                                .chars()
+                                .step_by(2)
+                                .zip(odd_it)
+                                .map(|(bit1, bit2)| {
+                                    i32::from_str_radix(&format!("{bit1}{bit2}"), 16).unwrap()
+                                        as f64
+                                })
+                                .collect::<Vec<_>>()[..]
+                            else {
+                                panic!("Unexpected error: cannot get RGB values from HEX {hex}")
+                            };
+                            let xyz = Xyz::from_rgb(&Rgb::new(r, g, b));
+                            (x, y) = (xyz.x / 100., xyz.y / 100.);
+                        }
+                    }
+                    Self::ColorXy {
+                        x: ref _x,
+                        y: ref _y,
+                    } => {
+                        if _x.is_none() || _y.is_none() {
+                            read = true;
+                        } else {
+                            (x, y) = (_x.unwrap(), _y.unwrap());
+                        }
+                    }
+                    _ => unreachable!(),
+                };
+
+                if read || x == 0. || y == 0. {
+                    let buf = hue_bar
+                        .read_gatt_char(&LIGHT_SERVICE, &COLOR)
+                        .await?
+                        .expect("Cannot get xy colors");
+
+                    let xyz = Xyz::new(
+                        u16::from_le_bytes([buf[0], buf[1]]) as f64 / 0xFFFF as f64,
+                        u16::from_le_bytes([buf[2], buf[3]]) as f64 / 0xFFFF as f64,
+                        0.,
+                    );
+
+                    // TODO: Fix colors display
+                    match this {
+                        Self::ColorRgb { .. } => {
+                            let rgb = Rgb::from(xyz);
+                            println!("Device color is ({:.0}, {:.0}, {:.0})", rgb.r, rgb.g, rgb.b);
+                        }
+                        Self::ColorHex { .. } => {
+                            let rgb = Rgb::from(xyz);
+                            let hex = [rgb.b as u8, rgb.g as u8, rgb.r as u8]
+                                .into_iter()
+                                .fold(String::new(), |_, v| format!("{v:x}"));
+                            println!("Device color is #{hex}");
+                        }
+                        Self::ColorXy { .. } => {
+                            println!("Device color is x: {:.2}, y: {:.2}", xyz.x, xyz.y);
+                        }
+                        _ => unreachable!(),
+                    }
+                } else {
+                    let mut buf = [0u8; 4];
+
+                    let scaled_x = (x * 0xFFFF as f64) as u16;
+                    let scaled_y = (y * 0xFFFF as f64) as u16;
+
+                    buf[0] = (scaled_x & 0xFF) as _;
+                    buf[1] = (scaled_x >> 8) as _;
+                    buf[2] = (scaled_y & 0xFF) as _;
+                    buf[3] = (scaled_y >> 8) as _;
+
+                    if !hue_bar
+                        .write_gatt_char(&LIGHT_SERVICE, &COLOR, &buf)
+                        .await?
+                    {
+                        eprintln!(
+                            "[ERROR] Service or Characteristic \"{COLOR}\" for \"{LIGHT_SERVICE}\" not found for device {}", hue_bar.addr
+                        );
+                    }
+                }
+            }
         }
 
         if !matches!(this, Self::PairAndTrust) {

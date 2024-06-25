@@ -142,6 +142,42 @@ impl HueBar {
         sleep(Duration::from_millis(150)).await;
         self.set_services().await
     }
+
+    pub async fn ensure_pairing(&mut self) -> bluer::Result<()> {
+        let mut retries = 2;
+        let mut error = None;
+        while !self.is_paired().await? {
+            if retries <= 0 {
+                panic!(
+                    "[ERROR] Failed to pair device {} after 2 attempts {:?}",
+                    self.addr, error
+                );
+            }
+            error = match self.pair().await {
+                Ok(_) => break,
+                Err(err) => Some(err),
+            };
+            retries -= 1;
+        }
+
+        retries = 2;
+        error = None;
+        while !self.is_trusted().await? {
+            if retries <= 0 {
+                panic!(
+                    "[ERROR] Failed to \"trust\" device {} after 2 attempts {:?}",
+                    self.addr, error
+                );
+            }
+            error = match self.set_trusted(true).await {
+                Ok(_) => break,
+                Err(err) => Some(err),
+            };
+            retries -= 1;
+        }
+
+        Ok(())
+    }
 }
 
 impl Deref for Service {
