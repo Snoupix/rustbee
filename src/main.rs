@@ -2,11 +2,16 @@ mod cli;
 mod hueblue;
 
 use clap::Parser;
+use interprocess::{
+    local_socket::{tokio::Stream, traits::tokio::Stream as _, ToFsName as _},
+    os::unix::local_socket::FilesystemUdSocket,
+};
+use uuid::{uuid, Uuid};
 
 use cli::Command;
 use hueblue::*;
 
-use uuid::{uuid, Uuid};
+include!("../shared.rs");
 
 const HUE_BAR_1_ADDR: [u8; 6] = [0xE8, 0xD4, 0xEA, 0xC4, 0x62, 0x00];
 const HUE_BAR_2_ADDR: [u8; 6] = [0xEC, 0x27, 0xA7, 0xD6, 0x5A, 0x9C];
@@ -67,4 +72,19 @@ fn parse_hex_address(address: String) -> [u8; 6] {
     }
 
     addr
+}
+
+async fn connect_to_daemon() -> Stream {
+    let path = get_path().await;
+
+    let fs_name = path
+        .to_fs_name::<FilesystemUdSocket>()
+        .unwrap_or_else(|error| {
+            eprintln!("Error cannot create filesystem path name: {error}");
+            std::process::exit(1);
+        });
+    Stream::connect(fs_name).await.unwrap_or_else(|error| {
+        eprintln!("Error cannot connect to file socket name: {path} => {error}");
+        std::process::exit(1);
+    })
 }

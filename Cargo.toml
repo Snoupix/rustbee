@@ -3,10 +3,14 @@ name = "rustbee"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "bluedaemon"
+
 [dependencies]
 bluer = { version = "0.17.1", features = ["full"] }
 clap = { version = "4.5.7", features = ["derive"] }
 color_space = "0.5.3"
 futures = "0.3.30"
-tokio = { version = "1.38.0", features = ["rt-multi-thread"] }
+interprocess = { version = "2.2.0", features = ["tokio"] }
+tokio = { version = "1.38.0", features = ["fs", "rt", "macros", "signal", "rt-multi-thread", "time"] }
 uuid = "1.8.0"

@@ -1,9 +1,10 @@
 use std::f64;
 
-use crate::*;
-
 use clap::{Parser, Subcommand};
 use color_space::{FromRgb, Rgb, Xyz};
+use tokio::io::{AsyncReadExt, AsyncWriteExt as _};
+
+use crate::*;
 
 #[derive(Debug, Parser)]
 pub struct Args {
@@ -36,6 +37,7 @@ pub enum Command {
     Brightness {
         value: Option<u8>,
     },
+    Disconnect,
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -46,11 +48,31 @@ pub enum State {
 
 impl Command {
     pub async fn job(this: Self, mut hue_bar: HueBar) -> bluer::Result<()> {
-        if !matches!(this, Self::PairAndTrust) {
-            hue_bar.init_connection().await?;
-        }
-
         hue_bar.ensure_pairing().await?;
+
+        if !matches!(this, Self::PairAndTrust | Self::Disconnect) {
+            let mut stream = connect_to_daemon().await;
+            let mut chunks = [0; 6 + 1];
+            for (i, byte) in hue_bar.addr.0.iter().enumerate() {
+                chunks[i] = *byte;
+            }
+            chunks[6] = *Mask::try_from(CONNECT).unwrap();
+            // println!("{:?}\n{:?}", hue_bar.addr.0, chunks);
+
+            stream.write_all(&chunks[..]).await.unwrap();
+            stream.flush().await.unwrap();
+
+            let mut buf = [0; 1];
+            stream.read_exact(&mut buf).await.unwrap();
+            if buf[0] & SUCCESS == 0 {
+                eprintln!(
+                    "Error: daemon failed to connect to device {:?}",
+                    hue_bar.addr.0
+                );
+                return Ok(());
+            }
+            hue_bar.set_services().await?;
+        }
 
         match this {
             Self::PairAndTrust => (),
@@ -73,8 +95,15 @@ impl Command {
                     let read = hue_bar.read_gatt_char(&LIGHT_SERVICE, &POWER).await?;
 
                     if let Some(bytes) = read {
+                        let name = hue_bar.name().await.unwrap_or(None).unwrap_or("".into());
                         println!(
-                            "Device is {}",
+                            "Device{} {} is {}",
+                            if name.is_empty() {
+                                name
+                            } else {
+                                format!(" {name}")
+                            },
+                            hue_bar.addr,
                             if *bytes.first().unwrap() == true as _ {
                                 "ON"
                             } else {
@@ -231,10 +260,26 @@ impl Command {
                     }
                 }
             }
-        }
+            Self::Disconnect => {
+                let mut stream = connect_to_daemon().await;
+                let mut chunks = [0; 6 + 1];
+                for (i, byte) in hue_bar.addr.0.iter().enumerate() {
+                    chunks[i] = *byte;
+                }
+                chunks[6] = *Mask::try_from(DISCONNECT).unwrap();
 
-        if !matches!(this, Self::PairAndTrust) {
-            hue_bar.disconnect().await?;
+                stream.write_all(&chunks[..]).await.unwrap();
+                stream.flush().await.unwrap();
+
+                let mut buf = [0; 1];
+                stream.read_exact(&mut buf).await.unwrap();
+                if buf[0] & SUCCESS == 0 {
+                    eprintln!(
+                        "Error: daemon failed to disconnect from device {:?}",
+                        hue_bar.addr.0
+                    );
+                }
+            }
         }
 
         Ok(())

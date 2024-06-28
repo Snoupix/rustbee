@@ -52,7 +52,7 @@ impl HueBar {
         self.device = None;
     }
 
-    async fn set_services(&mut self) -> bluer::Result<()> {
+    pub async fn set_services(&mut self) -> bluer::Result<()> {
         let mut services = Vec::new();
 
         for service in self.services().await? {
@@ -121,37 +121,19 @@ impl HueBar {
         Ok(false)
     }
 
-    pub async fn init_connection(&mut self) -> bluer::Result<()> {
-        let mut retries = 2;
-        loop {
-            if self.is_connected().await? {
-                break;
-            }
-
-            if retries <= 0 {
-                panic!(
-                    "[ERROR] Failed to connect to {} after 2 attempts",
-                    self.addr
-                );
-            }
-
-            let _ = self.connect().await;
-
-            retries -= 1;
-        }
-        sleep(Duration::from_millis(150)).await;
-        self.set_services().await
-    }
-
     pub async fn ensure_pairing(&mut self) -> bluer::Result<()> {
-        let mut retries = 2;
+        let mut retries = 3;
         let mut error = None;
         while !self.is_paired().await? {
             if retries <= 0 {
-                panic!(
-                    "[ERROR] Failed to pair device {} after 2 attempts {:?}",
+                eprintln!(
+                    "[ERROR] Failed to pair device {} after 3 attempts {:?}",
                     self.addr, error
                 );
+                return Err(bluer::Error {
+                    kind: bluer::ErrorKind::Failed,
+                    message: "Faileed to disconnect after 3 attempts".into(),
+                });
             }
             error = match self.pair().await {
                 Ok(_) => break,
@@ -164,10 +146,14 @@ impl HueBar {
         error = None;
         while !self.is_trusted().await? {
             if retries <= 0 {
-                panic!(
-                    "[ERROR] Failed to \"trust\" device {} after 2 attempts {:?}",
+                eprintln!(
+                    "[ERROR] Failed to \"trust\" device {} after 3 attempts {:?}",
                     self.addr, error
                 );
+                return Err(bluer::Error {
+                    kind: bluer::ErrorKind::Failed,
+                    message: "Faileed to disconnect after 3 attempts".into(),
+                });
             }
             error = match self.set_trusted(true).await {
                 Ok(_) => break,
@@ -254,42 +240,4 @@ pub async fn get_devices(addrs: &[[u8; 6]]) -> bluer::Result<Vec<HueBar>> {
     }
 
     Ok(addresses.into_values().collect())
-}
-
-pub async fn find_service(device: &Device, uuid: Uuid) -> bluer::Result<Option<BlueService>> {
-    for service in device.services().await.unwrap().into_iter() {
-        if service.uuid().await.unwrap() == uuid {
-            return Ok(Some(service));
-        }
-    }
-
-    Ok(None)
-}
-
-pub async fn find_charac(device: &Device, uuid: Uuid) -> bluer::Result<Option<BlueCharacteristic>> {
-    for service in device.services().await?.into_iter() {
-        for charac in service.characteristics().await? {
-            if charac.uuid().await? == uuid {
-                return Ok(Some(charac));
-            }
-        }
-    }
-
-    Ok(None)
-}
-
-pub async fn get_charac(
-    device: &Device,
-    service: Uuid,
-    uuid: Uuid,
-) -> bluer::Result<Option<BlueCharacteristic>> {
-    for service in device.services().await?.into_iter() {
-        for charac in service.characteristics().await? {
-            if charac.uuid().await? == uuid {
-                return Ok(Some(charac));
-            }
-        }
-    }
-
-    Ok(None)
 }

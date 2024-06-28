@@ -1,0 +1,59 @@
+#!/bin/bash
+
+case $1 in
+    "shutdown")
+        pid=$(pgrep bluedaemon)
+        kill -s INT $pid > /dev/null 2>&1
+        if [[ $? != 0 ]]; then
+            sudo pkill bluedaemon
+            sudo rm -f /var/run/bluedaemon.sock
+        fi
+    ;;
+    "build")
+        if [[ -f ./target/release/rustbee && -f ./target/release/bluedaemon ]]; then
+            echo "Binaries are already built, you can rust \`./rustbee help\` to have a preview of the commands available"
+            exit 1
+        fi
+
+        echo "Compiling rustbee & bluedaemon... (feel free to make some coffe)"
+        cargo build --release 1> /dev/null 2>&1
+        echo "Done! You can now run \`./rustbee help\` to have a preview of the commands available"
+    ;;
+    # TODO: fix this, install debian dependencies on the image
+    # "build_docker")
+    #     docker run --rm --user "$(id -u)":"$(id -g)" -v "$PWD":/usr/src/myapp -w /usr/src/myapp rust:1.79-bullseye sh -c "apt-get install libdbus-1-dev pkg-config && cargo build --release"
+    # ;;
+    *)
+        if [[ ! -f ./target/release/rustbee || ! -f ./target/release/bluedaemon ]]; then
+            echo "Binaries are not built, you must run \`./rustbee build\` first"
+            exit 1
+        fi
+
+        (bluetooth | grep "bluetooth = off") > /dev/null 2>&1
+        if [[ $? == 0 ]]; then
+            bluetooth on > /dev/null 2>&1 && sleep 2
+        fi
+
+        pgrep bluedaemon > /dev/null 2>&1
+        if [[ $? == 1 ]]; then
+            status=0
+            (sudo ./target/release/bluedaemon > ./bluedaemon.log 2>&1) &
+            pid=$!
+            sleep 1 # Random low waiting time to check if the bg process has stopped and returned a status code
+            kill -0 $pid > /dev/null 2>&1
+            if [[ $? == 1 ]]; then
+                wait $pid
+                status=$?
+            fi
+            if [[ $status > 0 ]]; then
+                if [[ $status == 2 ]]; then
+                    echo "Run \`./rustbee shutdown\` to stop running process and delete the socket"
+                fi
+
+                exit 1
+            fi
+        fi
+
+        sudo ./target/release/rustbee $@
+    ;;
+esac
