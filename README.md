@@ -46,7 +46,7 @@ Note that you will need to enter your password, the bash script uses `sudo` to h
 ./rustbee help
 ```
 
-*On error: if you get "le-connection-abor-by-local" error, it's kind of usual, BLE is a bit weak so try again your last command, it will most likely work after an other try*
+*On error: if you get "le-connection-abort-by-local" error, it's kind of usual, BLE is a bit weak so try again your last command, it will most likely work after an other try*
 
 ### Modules/Binaries
 
