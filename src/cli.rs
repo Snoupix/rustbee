@@ -18,7 +18,6 @@ pub struct Args {
 pub enum Command {
     PairAndTrust,
     Power {
-        // #[arg(short = 's', long)]
         #[command(subcommand)]
         state: Option<State>,
     },
@@ -47,10 +46,10 @@ pub enum State {
 }
 
 impl Command {
-    pub async fn job(this: Self, mut hue_bar: HueBar) -> bluer::Result<()> {
+    pub async fn handle(&self, mut hue_bar: HueBar) -> bluer::Result<()> {
         hue_bar.ensure_pairing().await?;
 
-        if !matches!(this, Self::PairAndTrust | Self::Disconnect) {
+        if !matches!(self, Self::PairAndTrust | Self::Disconnect) {
             let mut stream = connect_to_daemon().await;
             let mut chunks = [0; 6 + 1];
             for (i, byte) in hue_bar.addr.0.iter().enumerate() {
@@ -74,10 +73,10 @@ impl Command {
             hue_bar.set_services().await?;
         }
 
-        match this {
+        match self {
             Self::PairAndTrust => (),
-            Self::Power { ref state } => {
-                if let Some(state) = state {
+            Self::Power { state } => match state {
+                Some(state) => {
                     if !hue_bar
                         .write_gatt_char(
                             &LIGHT_SERVICE,
@@ -91,7 +90,8 @@ impl Command {
                             hue_bar.addr
                         );
                     }
-                } else {
+                }
+                None => {
                     let read = hue_bar.read_gatt_char(&LIGHT_SERVICE, &POWER).await?;
 
                     if let Some(bytes) = read {
@@ -116,11 +116,11 @@ impl Command {
                         );
                     }
                 }
-            }
+            },
             Self::Brightness { value } => match value {
                 Some(value) => {
                     assert!(
-                        (0..=100).contains(&value),
+                        (0..=100).contains(value),
                         "[ERROR] Brightness value must be between 0 and 100 inclusive"
                     );
 
@@ -128,7 +128,7 @@ impl Command {
                         .write_gatt_char(
                             &LIGHT_SERVICE,
                             &BRIGHTNESS,
-                            &[(((value as f32) / 100.) * 0xff as f32) as u8],
+                            &[(((*value as f32) / 100.) * 0xff as f32) as u8],
                         )
                         .await?
                     {
@@ -156,7 +156,7 @@ impl Command {
                 let mut read = false;
                 let (mut x, mut y) = (0., 0.);
 
-                match this {
+                match self {
                     Self::ColorRgb {
                         ref r,
                         ref g,
@@ -173,7 +173,7 @@ impl Command {
                             (x, y) = (xyz.x / 100., xyz.y / 100.);
                         }
                     }
-                    Self::ColorHex { ref hex } => {
+                    Self::ColorHex { hex } => {
                         if hex.is_none() {
                             read = true;
                         } else {
@@ -222,7 +222,7 @@ impl Command {
                     );
 
                     // TODO: Fix colors display
-                    match this {
+                    match self {
                         Self::ColorRgb { .. } => {
                             let rgb = Rgb::from(xyz);
                             println!("Device color is ({:.0}, {:.0}, {:.0})", rgb.r, rgb.g, rgb.b);

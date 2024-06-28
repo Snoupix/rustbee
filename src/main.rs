@@ -25,6 +25,7 @@ const COLOR: Uuid = uuid!("932c32bd-0005-47a2-835a-a8d455b859dd");
 #[tokio::main]
 async fn main() -> bluer::Result<()> {
     let args = cli::Args::parse();
+    let command: &mut Command = Box::leak(Box::new(args.command));
     let mut tasks = Vec::new();
 
     let hue_bars = get_devices(&match &args.hex_mac_addresses {
@@ -38,7 +39,7 @@ async fn main() -> bluer::Result<()> {
     .await?;
 
     for hue_bar in hue_bars {
-        tasks.push(tokio::spawn(Command::job(args.command.clone(), hue_bar)));
+        tasks.push(tokio::spawn(command.handle(hue_bar)));
     }
 
     for task in tasks {
