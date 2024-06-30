@@ -14,33 +14,28 @@ This project is built on [Arch linux](https://archlinux.org) *btw* thus it will 
 
 It might work on your Linux distro and maybe OSX if you have these required commands/programs (the others are "GNU/BSD defaults"):
 
-- rustc >= 1.79
-- rustup cargo component (rustup component add cargo)
 - pgrep
 - pkill
 - bluetooth
 - bluez
 - bluezlibs
 - bluezutils
-
-<!-- TODO: Need to fix build_docker image first
-Optional:
+Optional if docker is installed:
 - rustc >= 1.79
 - rustup cargo component (rustup component add cargo)
--->
 
 ## How to use
 
-<!-- TODO: Need to fix build_docker image first
-# If you don't have rust installed but you have docker you can use
-./rustbee build_docker
--->
+Note that you will need to enter your password, the bash script uses `sudo` to have permissions to create an IPC file socket at `/var/run` (which is root owned/protected) and if you're building with docker, it will compile root owned binaries so it will need your password at the end to change owner of these files.
 
-Note that you will need to enter your password, the bash script uses `sudo` to have permissions to create an IPC file socket at `/var/run` (which is root owned/protected)
+Depending on your CPU, compiling this project may take you around 2mins with or without docker.
 
 ```bash
 # First, you need to build the binaries
 ./rustbee build
+
+# If you don't have rust installed but you have docker you can use
+./rustbee build_docker
 
 # Then, to get the CLI commands available
 ./rustbee help

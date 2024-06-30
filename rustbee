@@ -2,11 +2,12 @@
 
 case $1 in
     "shutdown")
+        socket=$(cat src/constants.rs | grep "const RUN_PATH" | grep -oE '".*"' | sed s/\"//g)
         pid=$(pgrep bluedaemon)
         kill -s INT $pid > /dev/null 2>&1
         if [[ $? != 0 ]]; then
             sudo pkill bluedaemon
-            sudo rm -f /var/run/bluedaemon.sock
+            sudo rm -f $socket
         fi
     ;;
     "build")
@@ -19,10 +20,13 @@ case $1 in
         cargo build --release 1> /dev/null 2>&1
         echo "Done! You can now run \`./rustbee help\` to have a preview of the commands available"
     ;;
-    # TODO: fix this, install debian dependencies on the image
-    # "build_docker")
-    #     docker run --rm --user "$(id -u)":"$(id -g)" -v "$PWD":/usr/src/myapp -w /usr/src/myapp rust:1.79-bullseye sh -c "apt-get install libdbus-1-dev pkg-config && cargo build --release"
-    # ;;
+    "build_docker")
+        echo "Compiling rustbee & bluedaemon with docker... (feel free to make some coffe)"
+        docker run --rm --user root -v "$PWD":/usr/src/myapp -w /usr/src/myapp rust:1.79-bullseye\
+            bash -c "(apt-get update && apt-get install -y libdbus-1-dev pkg-config && cargo build --release -q) > /dev/null 2>&1"
+        sudo chown -R $(id -u):$(id -g) ./target
+        echo "Done! You can now run \`./rustbee help\` to have a preview of the commands available"
+    ;;
     *)
         if [[ ! -f ./target/release/rustbee || ! -f ./target/release/bluedaemon ]]; then
             echo "Binaries are not built, you must run \`./rustbee build\` first"
