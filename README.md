@@ -20,6 +20,7 @@ It might work on your Linux distro and maybe OSX if you have these required comm
 - bluez
 - bluezlibs
 - bluezutils
+
 Optional if docker is installed:
 - rustc >= 1.79
 - rustup cargo component (rustup component add cargo)
