@@ -13,17 +13,19 @@ if &shortmess =~ 'A'
 else
   set shortmess=aoO
 endif
-badd +22 src/main.rs
-badd +149 src/hueblue.rs
-badd +101 src/cli.rs
+badd +10 src/main.rs
+badd +325 src/hueblue.rs
+badd +202 src/cli.rs
 badd +54 README.md
-badd +47 shared.rs
 badd +53 rustbee
-badd +37 src/bin/bluedaemon.rs
+badd +178 src/bin/bluedaemon.rs
 badd +1 .gitignore
+badd +1 src/lib.rs
+badd +10 src/mask.rs
+badd +20 src/constants.rs
 argglobal
 %argdel
-edit rustbee
+edit src/hueblue.rs
 wincmd t
 let s:save_winminheight = &winminheight
 let s:save_winminwidth = &winminwidth
@@ -32,7 +34,7 @@ set winheight=1
 set winminwidth=0
 set winwidth=1
 argglobal
-balt src/hueblue.rs
+balt src/bin/bluedaemon.rs
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -43,11 +45,11 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 53 - ((49 * winheight(0) + 28) / 56)
+let s:l = 325 - ((27 * winheight(0) + 28) / 56)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 53
+keepjumps 325
 normal! 0
 lcd ~/work/rustbee
 tabnext 1

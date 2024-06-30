@@ -2,9 +2,9 @@ use std::f64;
 
 use clap::{Parser, Subcommand};
 use color_space::{FromRgb, Rgb, Xyz};
-use tokio::io::{AsyncReadExt, AsyncWriteExt as _};
 
-use crate::*;
+use crate::constants::{masks::*, DATA_LEN, GET, SET};
+use crate::hueblue::HueDevice;
 
 #[derive(Debug, Parser)]
 pub struct Args {
@@ -14,7 +14,7 @@ pub struct Args {
     pub hex_mac_addresses: Option<Vec<String>>,
 }
 
-#[derive(Debug, Subcommand, Clone)]
+#[derive(Debug, PartialEq, Subcommand, Clone)]
 pub enum Command {
     PairAndTrust,
     Power {
@@ -39,51 +39,31 @@ pub enum Command {
     Disconnect,
 }
 
-#[derive(Clone, Debug, Subcommand)]
+#[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum State {
     On,
     Off,
 }
 
 impl Command {
-    pub async fn handle(&self, mut hue_bar: HueBar) -> bluer::Result<()> {
-        hue_bar.ensure_pairing().await?;
+    pub async fn handle(&self, hue_bar: HueDevice) -> bluer::Result<()> {
+        let mut buf = [0u8; DATA_LEN];
 
-        if !matches!(self, Self::PairAndTrust | Self::Disconnect) {
-            let mut stream = connect_to_daemon().await;
-            let mut chunks = [0; 6 + 1];
-            for (i, byte) in hue_bar.addr.0.iter().enumerate() {
-                chunks[i] = *byte;
-            }
-            chunks[6] = *Mask::try_from(CONNECT).unwrap();
-            // println!("{:?}\n{:?}", hue_bar.addr.0, chunks);
-
-            stream.write_all(&chunks[..]).await.unwrap();
-            stream.flush().await.unwrap();
-
-            let mut buf = [0; 1];
-            stream.read_exact(&mut buf).await.unwrap();
-            if buf[0] & SUCCESS == 0 {
-                eprintln!(
-                    "Error: daemon failed to connect to device {:?}",
-                    hue_bar.addr.0
-                );
-                return Ok(());
-            }
-            hue_bar.set_services().await?;
+        if !hue_bar.send_packet_to_daemon(PAIR, buf).await.0 {
+            eprintln!("Error: failed to pair and trust device {}", hue_bar.addr);
+            return Ok(());
         }
 
         match self {
             Self::PairAndTrust => (),
             Self::Power { state } => match state {
                 Some(state) => {
+                    buf[0] = SET;
+                    buf[1] = matches!(*state, State::On) as _;
                     if !hue_bar
-                        .write_gatt_char(
-                            &LIGHT_SERVICE,
-                            &POWER,
-                            &[matches!(*state, State::On) as _],
-                        )
-                        .await?
+                        .send_packet_to_daemon(CONNECT | u8::from(self), buf)
+                        .await
+                        .0
                     {
                         eprintln!(
                             "[ERROR] Failed to write power state to hue bar address: {}",
@@ -92,10 +72,19 @@ impl Command {
                     }
                 }
                 None => {
-                    let read = hue_bar.read_gatt_char(&LIGHT_SERVICE, &POWER).await?;
+                    buf[0] = GET;
+                    let (success, state) = hue_bar
+                        .send_packet_to_daemon(CONNECT | u8::from(self), buf)
+                        .await;
 
-                    if let Some(bytes) = read {
+                    if !success {
+                        eprintln!(
+                            "[ERROR] Failed to read power state to hue bar address: {}",
+                            hue_bar.addr
+                        );
+                    } else {
                         let name = hue_bar.name().await.unwrap_or(None).unwrap_or("".into());
+
                         println!(
                             "Device{} {} is {}",
                             if name.is_empty() {
@@ -104,15 +93,7 @@ impl Command {
                                 format!(" {name}")
                             },
                             hue_bar.addr,
-                            if *bytes.first().unwrap() == true as _ {
-                                "ON"
-                            } else {
-                                "OFF"
-                            }
-                        );
-                    } else {
-                        eprintln!(
-                            "[ERROR] Service or Characteristic \"{POWER}\" for \"{LIGHT_SERVICE}\" not found for device {}", hue_bar.addr
+                            if state[0] == 1 { "ON" } else { "OFF" }
                         );
                     }
                 }
@@ -124,32 +105,44 @@ impl Command {
                         "[ERROR] Brightness value must be between 0 and 100 inclusive"
                     );
 
+                    buf[0] = SET;
+                    buf[1] = (((*value as f32) / 100.) * 0xff as f32) as _;
                     if !hue_bar
-                        .write_gatt_char(
-                            &LIGHT_SERVICE,
-                            &BRIGHTNESS,
-                            &[(((*value as f32) / 100.) * 0xff as f32) as u8],
-                        )
-                        .await?
+                        .send_packet_to_daemon(CONNECT | u8::from(self), buf)
+                        .await
+                        .0
                     {
                         eprintln!(
-                            "[ERROR] Service or Characteristic \"{POWER}\" for \"{LIGHT_SERVICE}\" not found for device {}", hue_bar.addr
+                            "[ERROR] Failed to write brightness state to hue bar address: {}",
+                            hue_bar.addr
                         );
                     }
                 }
                 None => {
-                    let brightness = (*hue_bar
-                        .read_gatt_char(&LIGHT_SERVICE, &BRIGHTNESS)
-                        .await?
-                        .expect("Cannot get brightness level")
-                        .first()
-                        .expect("Cannot get first byte, shouldn't happen"))
-                        as f32;
+                    buf[0] = GET;
+                    let (success, brightness) = hue_bar
+                        .send_packet_to_daemon(CONNECT | u8::from(self), buf)
+                        .await;
 
-                    println!(
-                        "Device brightness level is {:.2}%",
-                        (brightness / 255.) * 100.
-                    );
+                    if !success {
+                        eprintln!(
+                            "[ERROR] Failed to get brightness level from hue bar address: {}",
+                            hue_bar.addr
+                        );
+                    } else {
+                        let name = hue_bar.name().await.unwrap_or(None).unwrap_or("".into());
+
+                        println!(
+                            "Device{} {} brightness level is {}%",
+                            if name.is_empty() {
+                                name
+                            } else {
+                                format!(" {name}")
+                            },
+                            hue_bar.addr,
+                            (brightness[0] as f32 / 255.) * 100.
+                        );
+                    }
                 }
             },
             Self::ColorHex { .. } | Self::ColorXy { .. } | Self::ColorRgb { .. } => {
@@ -210,73 +203,72 @@ impl Command {
                 };
 
                 if read || x == 0. || y == 0. {
-                    let buf = hue_bar
-                        .read_gatt_char(&LIGHT_SERVICE, &COLOR)
-                        .await?
-                        .expect("Cannot get xy colors");
+                    buf[0] = GET;
+                    let (success, data) = hue_bar
+                        .send_packet_to_daemon(CONNECT | u8::from(self), buf)
+                        .await;
 
-                    let xyz = Xyz::new(
-                        u16::from_le_bytes([buf[0], buf[1]]) as f64 / 0xFFFF as f64,
-                        u16::from_le_bytes([buf[2], buf[3]]) as f64 / 0xFFFF as f64,
-                        0.,
-                    );
+                    if !success {
+                        eprintln!(
+                            "[ERROR] Failed to get color data from hue bar address: {}",
+                            hue_bar.addr
+                        );
+                    } else {
+                        let xyz = Xyz::new(
+                            u16::from_le_bytes([data[0], data[1]]) as f64 / 0xFFFF as f64,
+                            u16::from_le_bytes([data[2], data[3]]) as f64 / 0xFFFF as f64,
+                            0.,
+                        );
 
-                    // TODO: Fix colors display
-                    match self {
-                        Self::ColorRgb { .. } => {
-                            let rgb = Rgb::from(xyz);
-                            println!("Device color is ({:.0}, {:.0}, {:.0})", rgb.r, rgb.g, rgb.b);
+                        // TODO: Fix colors display / color processing
+                        match self {
+                            Self::ColorRgb { .. } => {
+                                let rgb = Rgb::from(xyz);
+                                println!(
+                                    "Device color is ({:.0}, {:.0}, {:.0})",
+                                    rgb.r, rgb.g, rgb.b
+                                );
+                            }
+                            Self::ColorHex { .. } => {
+                                let rgb = Rgb::from(xyz);
+                                let hex = [rgb.b as u8, rgb.g as u8, rgb.r as u8]
+                                    .into_iter()
+                                    .fold(String::new(), |_, v| format!("{v:x}"));
+                                println!("Device color is #{hex}");
+                            }
+                            Self::ColorXy { .. } => {
+                                println!("Device color is x: {:.2}, y: {:.2}", xyz.x, xyz.y);
+                            }
+                            _ => unreachable!(),
                         }
-                        Self::ColorHex { .. } => {
-                            let rgb = Rgb::from(xyz);
-                            let hex = [rgb.b as u8, rgb.g as u8, rgb.r as u8]
-                                .into_iter()
-                                .fold(String::new(), |_, v| format!("{v:x}"));
-                            println!("Device color is #{hex}");
-                        }
-                        Self::ColorXy { .. } => {
-                            println!("Device color is x: {:.2}, y: {:.2}", xyz.x, xyz.y);
-                        }
-                        _ => unreachable!(),
                     }
                 } else {
-                    let mut buf = [0u8; 4];
-
                     let scaled_x = (x * 0xFFFF as f64) as u16;
                     let scaled_y = (y * 0xFFFF as f64) as u16;
 
-                    buf[0] = (scaled_x & 0xFF) as _;
-                    buf[1] = (scaled_x >> 8) as _;
-                    buf[2] = (scaled_y & 0xFF) as _;
-                    buf[3] = (scaled_y >> 8) as _;
+                    buf[0] = SET;
+                    buf[1] = (scaled_x & 0xFF) as _;
+                    buf[2] = (scaled_x >> 8) as _;
+                    buf[3] = (scaled_y & 0xFF) as _;
+                    buf[4] = (scaled_y >> 8) as _;
 
                     if !hue_bar
-                        .write_gatt_char(&LIGHT_SERVICE, &COLOR, &buf)
-                        .await?
+                        .send_packet_to_daemon(CONNECT | u8::from(self), buf)
+                        .await
+                        .0
                     {
                         eprintln!(
-                            "[ERROR] Service or Characteristic \"{COLOR}\" for \"{LIGHT_SERVICE}\" not found for device {}", hue_bar.addr
+                            "Error: daemon failed to disconnect from device {}",
+                            hue_bar.addr
                         );
                     }
                 }
             }
             Self::Disconnect => {
-                let mut stream = connect_to_daemon().await;
-                let mut chunks = [0; 6 + 1];
-                for (i, byte) in hue_bar.addr.0.iter().enumerate() {
-                    chunks[i] = *byte;
-                }
-                chunks[6] = *Mask::try_from(DISCONNECT).unwrap();
-
-                stream.write_all(&chunks[..]).await.unwrap();
-                stream.flush().await.unwrap();
-
-                let mut buf = [0; 1];
-                stream.read_exact(&mut buf).await.unwrap();
-                if buf[0] & SUCCESS == 0 {
+                if !hue_bar.send_packet_to_daemon(DISCONNECT, buf).await.0 {
                     eprintln!(
-                        "Error: daemon failed to disconnect from device {:?}",
-                        hue_bar.addr.0
+                        "Error: daemon failed to disconnect from device {}",
+                        hue_bar.addr
                     );
                 }
             }

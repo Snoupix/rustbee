@@ -8,13 +8,23 @@ use bluer::{
     AdapterEvent, Address, Device, Session,
 };
 use futures::StreamExt;
-use tokio::time::sleep;
+use interprocess::{
+    local_socket::{tokio::Stream, traits::tokio::Stream as _, ToFsName as _},
+    os::unix::local_socket::FilesystemUdSocket,
+};
+use tokio::{
+    io::{AsyncReadExt as _, AsyncWriteExt as _},
+    time::sleep,
+};
 use uuid::Uuid;
 
+use crate::constants::*;
+use crate::mask::MaskT;
+
 #[derive(Debug, Default)]
-pub struct HueBar {
-    pub device: Option<Device>,
+pub struct HueDevice {
     pub addr: Address,
+    pub device: Option<Device>,
     pub services: Option<Vec<Service>>,
 }
 
@@ -33,11 +43,8 @@ pub struct Characteristic {
     pub inner: BlueCharacteristic,
 }
 
-impl HueBar {
+impl HueDevice {
     fn new(addr: Address) -> Self {
-        // TODO: On init, load every services onto the struct so it
-        // avoids to iterate over them all since bluer only indexes
-        // services and characteristics by ID and not UUID
         Self {
             addr,
             ..Default::default()
@@ -80,7 +87,7 @@ impl HueBar {
     }
 
     pub async fn read_gatt_char(
-        &mut self,
+        &self,
         service: &Uuid,
         charac: &Uuid,
     ) -> bluer::Result<Option<Vec<u8>>> {
@@ -121,9 +128,74 @@ impl HueBar {
         Ok(false)
     }
 
-    pub async fn ensure_pairing(&mut self) -> bluer::Result<()> {
+    pub async fn try_connect(&self) -> bluer::Result<()> {
+        let mut retries = 3;
+        loop {
+            if self.is_connected().await? {
+                break;
+            }
+
+            if retries <= 0 {
+                eprintln!(
+                    "[ERROR] Failed to connect to {} after 3 attempts",
+                    self.addr
+                );
+                return Err(bluer::Error {
+                    kind: bluer::ErrorKind::Failed,
+                    message: "Failed to disconnect after 3 attempts".into(),
+                });
+            }
+
+            if let Err(error) = self.connect().await {
+                eprintln!("[WARN] Connecting to device {} failed: {error}", self.addr);
+            }
+
+            retries -= 1;
+        }
+        sleep(Duration::from_millis(150)).await;
+
+        Ok(())
+    }
+
+    pub async fn try_disconnect(&self) -> bluer::Result<()> {
+        let mut retries = 3;
+        loop {
+            if !self.is_connected().await? {
+                break;
+            }
+
+            if retries <= 0 {
+                eprintln!(
+                    "[ERROR] Failed to disconnect from {} after 3 attempts",
+                    self.addr
+                );
+                return Err(bluer::Error {
+                    kind: bluer::ErrorKind::Failed,
+                    message: "Failed to disconnect after 3 attempts".into(),
+                });
+            }
+
+            if let Err(error) = self.disconnect().await {
+                eprintln!(
+                    "[WARN] Disconnecting from device {} failed: {error}",
+                    self.addr
+                );
+            }
+
+            retries -= 1;
+        }
+
+        Ok(())
+    }
+
+    pub async fn try_pair(&self) -> bluer::Result<()> {
         let mut retries = 3;
         let mut error = None;
+
+        if self.is_connected().await? {
+            return Ok(());
+        }
+
         while !self.is_paired().await? {
             if retries <= 0 {
                 eprintln!(
@@ -132,7 +204,7 @@ impl HueBar {
                 );
                 return Err(bluer::Error {
                     kind: bluer::ErrorKind::Failed,
-                    message: "Faileed to disconnect after 3 attempts".into(),
+                    message: "Failed to pair device after 3 attempts".into(),
                 });
             }
             error = match self.pair().await {
@@ -152,7 +224,7 @@ impl HueBar {
                 );
                 return Err(bluer::Error {
                     kind: bluer::ErrorKind::Failed,
-                    message: "Faileed to disconnect after 3 attempts".into(),
+                    message: "Failed to trust device after 3 attempts".into(),
                 });
             }
             error = match self.set_trusted(true).await {
@@ -163,6 +235,109 @@ impl HueBar {
         }
 
         Ok(())
+    }
+
+    pub async fn get_power(&self) -> bluer::Result<bool> {
+        let read = self.read_gatt_char(&LIGHT_SERVICES, &POWER).await?;
+        if let Some(bytes) = read {
+            Ok(*bytes.first().unwrap() == true as _)
+        } else {
+            Err(bluer::Error {
+                kind: bluer::ErrorKind::InvalidArguments,
+                message: format!("[ERROR] Service or Characteristic \"{POWER}\" for \"{LIGHT_SERVICES}\" not found for device {}", self.addr)
+            })
+        }
+    }
+
+    pub async fn set_power(&self, value: u8) -> bluer::Result<()> {
+        self.write_gatt_char(&LIGHT_SERVICES, &POWER, &[value])
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_brightness(&self) -> bluer::Result<f32> {
+        let read = self.read_gatt_char(&LIGHT_SERVICES, &BRIGHTNESS).await?;
+        if let Some(bytes) = read {
+            Ok(*bytes.first().unwrap() as f32)
+        } else {
+            Err(bluer::Error {
+                kind: bluer::ErrorKind::InvalidArguments,
+                message: format!("[ERROR] Service or Characteristic \"{BRIGHTNESS}\" for \"{LIGHT_SERVICES}\" not found for device {}", self.addr)
+            })
+        }
+    }
+
+    pub async fn set_brightness(&self, value: u8) -> bluer::Result<()> {
+        self.write_gatt_char(&LIGHT_SERVICES, &BRIGHTNESS, &[value])
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_color(&self) -> bluer::Result<[u8; 4]> {
+        let mut buf = [0u8; 4];
+        if let Some(bytes) = self.read_gatt_char(&LIGHT_SERVICES, &COLOR).await? {
+            let len = buf.len();
+            buf.copy_from_slice(&bytes[..len]);
+
+            Ok(buf)
+        } else {
+            Err(bluer::Error {
+                kind: bluer::ErrorKind::InvalidArguments,
+                message: format!("[ERROR] Service or Characteristic \"{COLOR}\" for \"{LIGHT_SERVICES}\" not found for device {}", self.addr)
+            })
+        }
+    }
+
+    pub async fn set_color(&self, buf: [u8; 4]) -> bluer::Result<()> {
+        self.write_gatt_char(&LIGHT_SERVICES, &COLOR, &buf).await?;
+
+        Ok(())
+    }
+
+    pub async fn send_packet_to_daemon(
+        &self,
+        flags: MaskT,
+        data: [u8; DATA_LEN],
+    ) -> (bool, [u8; OUTPUT_LEN - 1]) {
+        let mut output = [0; OUTPUT_LEN - 1];
+        let path = get_path().await;
+
+        let fs_name = path
+            .to_fs_name::<FilesystemUdSocket>()
+            .unwrap_or_else(|error| {
+                eprintln!("Error cannot create filesystem path name: {error}");
+                std::process::exit(1);
+            });
+        let mut stream = Stream::connect(fs_name).await.unwrap_or_else(|error| {
+            eprintln!("Error cannot connect to file socket name: {path} => {error}");
+            std::process::exit(1);
+        });
+
+        let mut chunks = [0; BUFFER_LEN];
+        for (i, byte) in self.addr.0.iter().enumerate() {
+            chunks[i] = *byte;
+        }
+        chunks[DATA_LEN] = flags;
+        for (i, byte) in data.iter().enumerate() {
+            chunks[i + DATA_LEN + 1] = *byte;
+        }
+
+        stream.write_all(&chunks[..]).await.unwrap();
+        stream.flush().await.unwrap();
+
+        let mut buf = [0; OUTPUT_LEN];
+        if let Err(error) = stream.read_exact(&mut buf).await {
+            eprintln!("Error cannot read daemon output, please check daemon.log file ({error})");
+            return (false, output);
+        }
+
+        for (i, byte) in buf[1..].iter().enumerate() {
+            output[i] = *byte;
+        }
+
+        (buf[0] & SUCCESS == 1, output)
     }
 }
 
@@ -182,7 +357,7 @@ impl Deref for Characteristic {
     }
 }
 
-impl Deref for HueBar {
+impl Deref for HueDevice {
     type Target = Device;
 
     /// Be sure to use it wisely since it NEEDS to have the device set
@@ -191,7 +366,7 @@ impl Deref for HueBar {
     }
 }
 
-pub async fn get_devices(addrs: &[[u8; 6]]) -> bluer::Result<Vec<HueBar>> {
+pub async fn get_devices(addrs: &[[u8; 6]]) -> bluer::Result<Vec<HueDevice>> {
     let session = Session::new().await?;
     let adapter = session.default_adapter().await?;
 
@@ -201,10 +376,10 @@ pub async fn get_devices(addrs: &[[u8; 6]]) -> bluer::Result<Vec<HueBar>> {
 
     let mut discovery = adapter.discover_devices().await?;
     let mut pinned_disco = unsafe { Pin::new_unchecked(&mut discovery) };
-    let mut addresses: HashMap<[u8; 6], HueBar> = HashMap::with_capacity(addrs.len());
+    let mut addresses: HashMap<[u8; 6], HueDevice> = HashMap::with_capacity(addrs.len());
 
     addrs.iter().for_each(|addr| {
-        addresses.insert(*addr, HueBar::new(Address::new(*addr)));
+        addresses.insert(*addr, HueDevice::new(Address::new(*addr)));
     });
 
     while let Some(event) = pinned_disco.next().await {
