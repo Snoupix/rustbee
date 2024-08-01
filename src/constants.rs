@@ -10,6 +10,7 @@ pub const HUE_BAR_2_ADDR: [u8; 6] = [0xEC, 0x27, 0xA7, 0xD6, 0x5A, 0x9C];
 pub const LIGHT_SERVICES: Uuid = uuid!("932c32bd-0000-47a2-835a-a8d455b859dd");
 pub const POWER: Uuid = uuid!("932c32bd-0002-47a2-835a-a8d455b859dd");
 pub const BRIGHTNESS: Uuid = uuid!("932c32bd-0003-47a2-835a-a8d455b859dd");
+pub const TEMPERATURE: Uuid = uuid!("932c32bd-0004-47a2-835a-a8d455b859dd");
 pub const COLOR: Uuid = uuid!("932c32bd-0005-47a2-835a-a8d455b859dd");
 
 pub const RUN_PATH: &str = "/var/run/bluedaemon.sock"; // Needs to be sudo bc /run is root owned

@@ -1,4 +1,5 @@
 mod cli;
+mod colors;
 mod constants;
 mod hueblue;
 mod mask;

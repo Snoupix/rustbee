@@ -3,14 +3,14 @@ use std::time::Duration;
 use std::{collections::HashMap, io::Error};
 
 use bluer::{Adapter, Address, Session};
-use interprocess::local_socket::tokio::Stream;
 use interprocess::local_socket::{
-    traits::tokio::Listener as _, ListenerNonblockingMode, ListenerOptions, ToFsName,
+    tokio::Stream, traits::tokio::Listener as _, ListenerNonblockingMode, ListenerOptions, ToFsName,
 };
 use interprocess::os::unix::local_socket::FilesystemUdSocket;
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
-    signal, time,
+    signal,
+    time::{self, sleep},
 };
 
 use rustbee::cli::Command;
@@ -20,8 +20,8 @@ use rustbee::mask::get_commands_from_flags;
 
 const TIMEOUT_SECS: u64 = 60 * 5;
 
-// converts Result<T, E> into SUCCESS or FAILURE (1 or 0)
-macro_rules! u {
+/// converts Result<T, E> into SUCCESS or FAILURE (1 or 0)
+macro_rules! res_to_u8 {
     ($r:expr) => {
         $r.map_or_else(|_| FAILURE, |_| SUCCESS)
     };
@@ -71,6 +71,9 @@ async fn main() {
         }
     }
 
+    for (_, device) in devices {
+        let _ = device.try_disconnect().await;
+    }
     std::fs::remove_file(path).unwrap();
 }
 
@@ -138,17 +141,17 @@ async fn process_conn(conn: Result<Stream, Error>, devices: &mut HashMap<[u8; 6]
             let commands = get_commands_from_flags(flags);
 
             if (flags >> (CONNECT - 1)) & 1 == 1 {
-                let value = u!(hue_device.try_connect().await);
+                let value = res_to_u8!(hue_device.try_connect().await);
                 success[0] = u8::min(success[0], value);
             }
 
             for command in commands {
                 let value = match command {
-                    Command::PairAndTrust => u!(hue_device.try_pair().await),
-                    Command::Disconnect => u!(hue_device.try_disconnect().await),
+                    Command::PairAndTrust => res_to_u8!(hue_device.try_pair().await),
+                    Command::Disconnect => res_to_u8!(hue_device.try_disconnect().await),
                     Command::Power { .. } => {
                         if set {
-                            u!(hue_device.set_power(data[0]).await)
+                            res_to_u8!(hue_device.set_power(data[0]).await)
                         } else if let Ok(state) = hue_device.get_power().await {
                             success[1] = state as _;
                             SUCCESS
@@ -158,7 +161,7 @@ async fn process_conn(conn: Result<Stream, Error>, devices: &mut HashMap<[u8; 6]
                     }
                     Command::Brightness { .. } => {
                         if set {
-                            u!(hue_device.set_brightness(data[0]).await)
+                            res_to_u8!(hue_device.set_brightness(data[0]).await)
                         } else if let Ok(v) = hue_device.get_brightness().await {
                             success[1] = v as _;
                             SUCCESS
@@ -169,9 +172,11 @@ async fn process_conn(conn: Result<Stream, Error>, devices: &mut HashMap<[u8; 6]
                     Command::ColorRgb { .. }
                     | Command::ColorHex { .. }
                     | Command::ColorXy { .. } => {
-                        let buf = [data[0], data[1], data[2], data[3]];
+                        let mut buf = [0u8; 4];
+                        buf.copy_from_slice(&data[..4]);
+
                         if set {
-                            u!(hue_device.set_color(buf).await)
+                            res_to_u8!(hue_device.set_color(buf).await)
                         } else if let Ok(bytes) = hue_device.get_color().await {
                             for (i, byte) in bytes.iter().enumerate() {
                                 success[i + 1] = *byte;
@@ -184,6 +189,9 @@ async fn process_conn(conn: Result<Stream, Error>, devices: &mut HashMap<[u8; 6]
                     }
                 };
                 success[0] = u8::min(success[0], value);
+
+                // https://developers.meethue.com/develop/get-started-2/core-concepts/#limitations
+                sleep(Duration::from_millis(100)).await;
             }
 
             if success[0] != 3 {

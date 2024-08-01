@@ -13,21 +13,21 @@ if &shortmess =~ 'A'
 else
   set shortmess=aoO
 endif
-badd +10 src/main.rs
-badd +325 src/hueblue.rs
-badd +202 src/cli.rs
+badd +5 src/main.rs
+badd +73 src/hueblue.rs
+badd +235 src/cli.rs
 badd +31 README.md
-badd +11 rustbee
-badd +178 src/bin/bluedaemon.rs
+badd +6 rustbee
+badd +177 src/bin/bluedaemon.rs
 badd +1 .gitignore
-badd +1 src/lib.rs
+badd +5 src/lib.rs
 badd +10 src/mask.rs
-badd +15 src/constants.rs
+badd +13 src/constants.rs
+badd +155 src/colors.rs
 argglobal
 %argdel
-edit rustbee
+edit src/colors.rs
 argglobal
-balt src/constants.rs
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -38,12 +38,12 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 6 - ((5 * winheight(0) + 28) / 56)
+let s:l = 1 - ((0 * winheight(0) + 27) / 55)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 6
-normal! 030|
+keepjumps 1
+normal! 0
 lcd ~/work/rustbee
 tabnext 1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0 && getbufvar(s:wipebuf, '&buftype') isnot# 'terminal'
@@ -57,7 +57,6 @@ if filereadable(s:sx)
   exe "source " . fnameescape(s:sx)
 endif
 let &g:so = s:so_save | let &g:siso = s:siso_save
-nohlsearch
 doautoall SessionLoadPost
 unlet SessionLoad
 " vim: set ft=vim :

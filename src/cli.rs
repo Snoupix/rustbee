@@ -3,6 +3,7 @@ use std::f64;
 use clap::{Parser, Subcommand};
 use color_space::{FromRgb, Rgb, Xyz};
 
+use crate::colors::Xy;
 use crate::constants::{masks::*, DATA_LEN, GET, SET};
 use crate::hueblue::HueDevice;
 
@@ -158,12 +159,19 @@ impl Command {
                         if r.is_none() || g.is_none() || b.is_none() {
                             read = true;
                         } else {
-                            let xyz = Xyz::from_rgb(&Rgb::new(
+                            // let xyz = Xyz::from_rgb(&Rgb::new(
+                            //     r.unwrap() as _,
+                            //     g.unwrap() as _,
+                            //     b.unwrap() as _,
+                            // ));
+                            // (x, y) = (xyz.x / 100., xyz.y / 100.);
+                            let xy = Xy::from(Rgb::new(
                                 r.unwrap() as _,
                                 g.unwrap() as _,
                                 b.unwrap() as _,
                             ));
-                            (x, y) = (xyz.x / 100., xyz.y / 100.);
+                            x = xy.x;
+                            y = xy.y;
                         }
                     }
                     Self::ColorHex { hex } => {
@@ -202,7 +210,7 @@ impl Command {
                     _ => unreachable!(),
                 };
 
-                if read || x == 0. || y == 0. {
+                if read {
                     buf[0] = GET;
                     let (success, data) = hue_bar
                         .send_packet_to_daemon(CONNECT | u8::from(self), buf)
@@ -214,30 +222,47 @@ impl Command {
                             hue_bar.addr
                         );
                     } else {
-                        let xyz = Xyz::new(
-                            u16::from_le_bytes([data[0], data[1]]) as f64 / 0xFFFF as f64,
-                            u16::from_le_bytes([data[2], data[3]]) as f64 / 0xFFFF as f64,
-                            0.,
-                        );
+                        let x = u16::from_le_bytes([data[0], data[1]]) as f64 / 0xFFFF as f64;
+                        let y = u16::from_le_bytes([data[2], data[3]]) as f64 / 0xFFFF as f64;
+                        let xy = Xy::new(x, y);
+                        let xyz = Xyz::new(x, y, 1. - x - y);
 
                         // TODO: Fix colors display / color processing
                         match self {
                             Self::ColorRgb { .. } => {
-                                let rgb = Rgb::from(xyz);
+                                buf[0] = GET;
+                                let (success, brightness) = hue_bar
+                                    .send_packet_to_daemon(CONNECT | BRIGHTNESS, buf)
+                                    .await;
+
+                                if !success {
+                                    eprintln!(
+                                        "[ERROR] Failed to get brightness to calculate XYZ color"
+                                    );
+                                    return Ok(());
+                                }
+
+                                let rgb = xy.to_rgb(brightness[0] as f64 / 255.);
+                                assert!(rgb.r * 100. <= 255.);
+                                assert!(rgb.g * 100. <= 255.);
+                                assert!(rgb.b * 100. <= 255.);
                                 println!(
-                                    "Device color is ({:.0}, {:.0}, {:.0})",
-                                    rgb.r, rgb.g, rgb.b
+                                    "Device color is ({:.0}, {:.0}, {:.0}) ({:?})",
+                                    rgb.r * 100.,
+                                    rgb.g * 100.,
+                                    rgb.b * 100.,
+                                    Rgb::from(xyz)
                                 );
                             }
                             Self::ColorHex { .. } => {
                                 let rgb = Rgb::from(xyz);
                                 let hex = [rgb.b as u8, rgb.g as u8, rgb.r as u8]
                                     .into_iter()
-                                    .fold(String::new(), |_, v| format!("{v:x}"));
+                                    .fold(String::new(), |_, v| format!("{v:06x}"));
                                 println!("Device color is #{hex}");
                             }
                             Self::ColorXy { .. } => {
-                                println!("Device color is x: {:.2}, y: {:.2}", xyz.x, xyz.y);
+                                println!("Device color is x: {:.3}, y: {:.3}", xyz.x, xyz.y);
                             }
                             _ => unreachable!(),
                         }
@@ -265,7 +290,7 @@ impl Command {
                 }
             }
             Self::Disconnect => {
-                if !hue_bar.send_packet_to_daemon(DISCONNECT, buf).await.0 {
+                if !hue_bar.send_packet_to_daemon(u8::from(self), buf).await.0 {
                     eprintln!(
                         "Error: daemon failed to disconnect from device {}",
                         hue_bar.addr

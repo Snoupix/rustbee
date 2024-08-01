@@ -38,6 +38,9 @@ Depending on your CPU, compiling this project may take you around 2mins with or 
 # If you don't have rust installed but you have docker you can use
 ./rustbee build_docker
 
+# If you just wanna stop the bluedaemon and close (delete) the file socket
+./rustbee shutdown
+
 # Then, to get the CLI commands available
 ./rustbee help
 ```
