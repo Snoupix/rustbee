@@ -5,7 +5,6 @@ MSRV="1.80"
 docker=false
 docker_base_pkgs="(apt-get update && apt-get install -y libdbus-1-dev pkg-config) > /dev/null 2>&1"
 log_path=/var/log/rustbee-daemon.log
-#log_path=./rustbee-daemon.log
 
 build_cli() {
     if [[ -f ./target/release/rustbee && -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
@@ -41,6 +40,7 @@ build_gui() {
     if [[ "$docker" = true ]]; then
         echo "Compiling Rustbee GUI & its daemon with docker... (feel free to make some coffe)"
 
+        # TODO merge them to avoid create 2 docker containers
         cd rustbee-daemon
         docker run --rm --user root -v "$PWD":/usr/src/rustbee -w /usr/src/rustbee rust:$MSRV-bullseye\
             bash -c "$docker_base_pkgs && cargo build --release -q"
@@ -138,6 +138,7 @@ EOF
         if [[ $? == 1 ]]; then
             status=0
             sudo touch $log_path
+            sudo chown $(id -u):$(id -g) $log_path
             (sudo ./rustbee-daemon/target/release/rustbee-daemon > $log_path 2>&1) &
             pid=$!
             sleep 1 # Random low waiting time to check if the bg process has stopped and returned a status code

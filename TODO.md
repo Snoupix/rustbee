@@ -1,4 +1,0 @@
-- Base: the CLI
-- common: shared stuff
-- daemon: local socket, keeping alive bluetooth conn
-- gui: interactive as the CLI but for a gui
