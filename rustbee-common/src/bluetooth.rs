@@ -19,7 +19,6 @@ use tokio::{
 use uuid::Uuid;
 
 use crate::constants::*;
-use crate::mask::MaskT;
 
 #[derive(Debug, Default)]
 pub struct HueDevice {

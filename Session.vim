@@ -13,21 +13,23 @@ if &shortmess =~ 'A'
 else
   set shortmess=aoO
 endif
-badd +5 src/main.rs
-badd +73 src/hueblue.rs
-badd +235 src/cli.rs
 badd +31 README.md
-badd +6 rustbee
-badd +177 src/bin/bluedaemon.rs
+badd +85 rustbee
 badd +1 .gitignore
-badd +5 src/lib.rs
-badd +10 src/mask.rs
-badd +13 src/constants.rs
-badd +155 src/colors.rs
+badd +23 rustbee-gui/src/main.rs
+badd +11 Cargo.toml
+badd +3 rustbee-common/src/lib.rs
+badd +45 rustbee-common/src/constants.rs
+badd +5 src/main.rs
+badd +4 TODO.md
+badd +16 rustbee-daemon/src/main.rs
+badd +249 rustbee-common/src/colors.rs
+badd +1 rustbee-common/src/bluetooth.rs
 argglobal
 %argdel
-edit src/colors.rs
+edit rustbee-gui/src/main.rs
 argglobal
+balt rustbee
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -38,12 +40,12 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 1 - ((0 * winheight(0) + 27) / 55)
+let s:l = 23 - ((22 * winheight(0) + 27) / 55)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 1
-normal! 0
+keepjumps 23
+normal! 076|
 lcd ~/work/rustbee
 tabnext 1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0 && getbufvar(s:wipebuf, '&buftype') isnot# 'terminal'

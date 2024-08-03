@@ -13,10 +13,11 @@ use tokio::{
     time::{self, sleep},
 };
 
-use rustbee::cli::Command;
-use rustbee::constants::{flags::*, get_path, BUFFER_LEN, FAILURE, OUTPUT_LEN, SET, SUCCESS};
-use rustbee::hueblue::*;
-use rustbee::mask::get_commands_from_flags;
+use rustbee_common::bluetooth::*;
+
+use rustbee_common::constants::{
+    flags::CONNECT, get_path, MaskT, BUFFER_LEN, FAILURE, OUTPUT_LEN, SET, SUCCESS,
+};
 
 const TIMEOUT_SECS: u64 = 60 * 5;
 
@@ -212,4 +213,44 @@ async fn get_adapter() -> bluer::Result<Adapter> {
     }
 
     Ok(adapter)
+}
+
+enum Command {
+    PairAndTrust,
+    Power,
+    ColorRgb,
+    ColorHex,
+    ColorXy,
+    Brightness,
+    Disconnect,
+}
+
+fn get_commands_from_flags(flags: MaskT) -> Vec<Command> {
+    use rustbee_common::constants::flags::*;
+
+    let mut v = Vec::new();
+
+    if (flags >> (PAIR - 1)) & 1 == 1 {
+        v.push(Command::PairAndTrust);
+    }
+    if (flags >> (POWER - 1)) & 1 == 1 {
+        v.push(Command::Power)
+    }
+    if (flags >> (COLOR_RGB - 1)) & 1 == 1 {
+        v.push(Command::ColorRgb)
+    }
+    if (flags >> (COLOR_HEX - 1)) & 1 == 1 {
+        v.push(Command::ColorHex)
+    }
+    if (flags >> (COLOR_XY - 1)) & 1 == 1 {
+        v.push(Command::ColorXy)
+    }
+    if (flags >> (BRIGHTNESS - 1)) & 1 == 1 {
+        v.push(Command::Brightness)
+    }
+    if (flags >> (DISCONNECT - 1)) & 1 == 1 {
+        v.push(Command::Disconnect)
+    }
+
+    v
 }

@@ -1,35 +1,131 @@
 #!/bin/bash
 
+MSRV="1.80"
+
+docker=false
+docker_base_pkgs="(apt-get update && apt-get install -y libdbus-1-dev pkg-config) > /dev/null 2>&1"
+log_path=/var/log/rustbee-daemon.log
+#log_path=./rustbee-daemon.log
+
+build_cli() {
+    if [[ -f ./target/release/rustbee && -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
+        echo "Binaries are already built, you can run \`rustbee help\` to have a preview of the commands available"
+        exit 1
+    fi
+
+    if [[ "$docker" = true ]]; then
+        echo "Compiling Rustbee CLI & its daemon with docker... (feel free to make some coffe)"
+
+        docker run --rm --user root -v "$PWD":/usr/src/rustbee -w /usr/src/rustbee rust:$MSRV-bullseye\
+            bash -c "$docker_base_pkgs && cargo build --release -q && cd rustbee-daemon && cargo build --release -q"
+        sudo chown -R $(id -u):$(id -g) ./target
+        sudo chown -R $(id -u):$(id -g) ./rustbee-daemon/target
+
+        echo "Done! You can now run \`rustbee help\` to have a preview of the commands available"
+        exit 0
+    fi
+
+    echo "Compiling Rustbee CLI & its daemon... (feel free to make some coffe)"
+    cargo build --release -q 1> /dev/null
+    cd rustbee-daemon
+    cargo build --release -q
+    echo "Done! You can now run \`rustbee help\` to have a preview of the commands available"
+}
+
+build_gui() {
+    if [[ -f ./rustbee-gui/target/release/rustbee-gui && -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
+        echo "Binaries are already built, you can run \`rustbee gui\` to launch the GUI"
+        exit 1
+    fi
+
+    if [[ "$docker" = true ]]; then
+        echo "Compiling Rustbee GUI & its daemon with docker... (feel free to make some coffe)"
+
+        cd rustbee-daemon
+        docker run --rm --user root -v "$PWD":/usr/src/rustbee -w /usr/src/rustbee rust:$MSRV-bullseye\
+            bash -c "$docker_base_pkgs && cargo build --release -q"
+        sudo chown -R $(id -u):$(id -g) ./target
+
+        cd ../rustbee-gui
+        docker run --rm --user root -v "$PWD":/usr/src/rustbee -w /usr/src/rustbee rust:$MSRV-bullseye\
+            bash -c "$docker_base_pkgs && cargo build --release -q"
+        sudo chown -R $(id -u):$(id -g) ./target
+
+        echo "Done! You can now run \`rustbee gui\` to launch the GUI"
+        exit 0
+    fi
+
+    echo "Compiling Rustbee GUI & its daemon... (feel free to make some coffe)"
+    cd rustbee-daemon
+    cargo build --release -q
+    cd ../rustbee-gui
+    cargo build --release -q
+    echo "Done! You can now run \`rustbee gui\` to launch the GUI"
+}
+
+
+
 case $1 in
     "shutdown")
-        socket=$(cat src/constants.rs | grep "const RUN_PATH" | grep -oE '".*"' | sed s/\"//g)
-        pid=$(pgrep bluedaemon)
+        socket=$(cat rustbee-common/src/constants.rs | grep "const RUN_PATH" | grep -oE '".*"' | sed s/\"//g)
+        pid=$(pgrep rustbee-daemon)
         kill -s INT $pid > /dev/null 2>&1
         if [[ $? != 0 ]]; then
-            sudo pkill bluedaemon
+            sudo pkill rustbee-daemon
             sudo rm -f $socket
         fi
     ;;
-    "build")
-        if [[ -f ./target/release/rustbee && -f ./target/release/bluedaemon ]]; then
-            echo "Binaries are already built, you can rust \`./rustbee help\` to have a preview of the commands available"
+    "clean_binaries")
+        cargo clean
+        cd rustbee-daemon
+        cargo clean
+        cd ../rustbee-gui
+        cargo clean
+    ;;
+    "gui")
+        if [[ ! -f ./rustbee-gui/target/release/rustbee-gui || ! -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
+            echo "Binaries are not built, you must run \`rustbee build gui\` first"
             exit 1
         fi
 
-        echo "Compiling rustbee & bluedaemon... (feel free to make some coffe)"
-        cargo build --release 1> /dev/null 2>&1
-        echo "Done! You can now run \`./rustbee help\` to have a preview of the commands available"
+        exec ./rustbee-gui/target/release/rustbee-gui
     ;;
-    "build_docker")
-        echo "Compiling rustbee & bluedaemon with docker... (feel free to make some coffe)"
-        docker run --rm --user root -v "$PWD":/usr/src/myapp -w /usr/src/myapp rust:1.79-bullseye\
-            bash -c "(apt-get update && apt-get install -y libdbus-1-dev pkg-config && cargo build --release -q) > /dev/null 2>&1"
-        sudo chown -R $(id -u):$(id -g) ./target
-        echo "Done! You can now run \`./rustbee help\` to have a preview of the commands available"
+    "build")
+        if [[ $3 == "--docker" || $3 == "-d" ]]; then
+            docker=true
+        fi
+
+        set -e
+
+        case $2 in
+            "cli") build_cli;;
+            "gui") build_gui;;
+            # TODO: WASM
+            *)
+                echo "Usage: rustbee build (cli|gui) [options]"
+                echo " "
+                echo "options:"
+                echo -e  "\t-d, --docker         use docker to build binaries if you don't have the Rust compiler locally"
+                exit 1
+            ;;
+        esac
+    ;;
+    "build_gui_windows") # experimental stuff
+        cd rustbee-gui
+        windows_build_cmds=$(cat <<- EOF
+            export PKG_CONFIG_SYSROOT_DIR=/
+            apt-get update &&
+            apt-get install -y libdbus-1-dev pkg-config g++-mingw-w64-x86-64 &&
+            rustup target add x86_64-pc-windows-gnu &&
+            rustup toolchain install stable-x86_64-pc-windows-gnu &&
+            cargo build --release --target x86_64-pc-windows-gnu
+EOF
+)
+        docker run --rm --user root -v "$PWD":/usr/src/rustbee -w /usr/src/rustbee rust:$MSRV bash -c "$windows_build_cmds"
     ;;
     *)
-        if [[ ! -f ./target/release/rustbee || ! -f ./target/release/bluedaemon ]]; then
-            echo "Binaries are not built, you must run \`./rustbee build\` first"
+        if [[ ! -f ./target/release/rustbee || ! -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
+            echo "Binaries are not built, you must run \`rustbee build cli\` first"
             exit 1
         fi
 
@@ -38,10 +134,11 @@ case $1 in
             bluetooth on > /dev/null 2>&1 && sleep 2
         fi
 
-        pgrep bluedaemon > /dev/null 2>&1
+        pgrep rustbee-daemon > /dev/null 2>&1
         if [[ $? == 1 ]]; then
             status=0
-            (sudo ./target/release/bluedaemon > ./bluedaemon.log 2>&1) &
+            sudo touch $log_path
+            (sudo ./rustbee-daemon/target/release/rustbee-daemon > $log_path 2>&1) &
             pid=$!
             sleep 1 # Random low waiting time to check if the bg process has stopped and returned a status code
             kill -0 $pid > /dev/null 2>&1
@@ -51,7 +148,7 @@ case $1 in
             fi
             if [[ $status > 0 ]]; then
                 if [[ $status == 2 ]]; then
-                    echo "Run \`./rustbee shutdown\` to stop running process and delete the socket"
+                    echo "Run \`rustbee shutdown\` to stop running process and delete the socket"
                 fi
 
                 exit 1

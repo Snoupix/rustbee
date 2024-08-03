@@ -1,14 +1,10 @@
 mod cli;
-mod colors;
-mod constants;
-mod hueblue;
-mod mask;
 
 use clap::Parser;
+use rustbee_common::bluetooth::*;
+use rustbee_common::constants::*;
 
 use cli::Command;
-use constants::*;
-use hueblue::*;
 
 #[tokio::main]
 async fn main() -> bluer::Result<()> {

@@ -1,7 +1,7 @@
 use tokio::fs;
 use uuid::{uuid, Uuid};
 
-use crate::mask::MaskT;
+pub type MaskT = u8;
 
 pub const HUE_BAR_1_ADDR: [u8; 6] = [0xE8, 0xD4, 0xEA, 0xC4, 0x62, 0x00];
 pub const HUE_BAR_2_ADDR: [u8; 6] = [0xEC, 0x27, 0xA7, 0xD6, 0x5A, 0x9C];

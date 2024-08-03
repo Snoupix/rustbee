@@ -2,10 +2,10 @@ use std::f64;
 
 use clap::{Parser, Subcommand};
 use color_space::{FromRgb, Rgb, Xyz};
+use rustbee_common::constants::{masks::*, MaskT, DATA_LEN, GET, SET};
 
-use crate::colors::Xy;
-use crate::constants::{masks::*, DATA_LEN, GET, SET};
-use crate::hueblue::HueDevice;
+use rustbee_common::bluetooth::HueDevice;
+use rustbee_common::colors::Xy;
 
 #[derive(Debug, Parser)]
 pub struct Args {
@@ -44,6 +44,20 @@ pub enum Command {
 pub enum State {
     On,
     Off,
+}
+
+impl From<&Command> for MaskT {
+    fn from(value: &Command) -> Self {
+        match value {
+            Command::PairAndTrust => PAIR,
+            Command::Power { .. } => POWER,
+            Command::ColorRgb { .. } => COLOR_RGB,
+            Command::ColorHex { .. } => COLOR_HEX,
+            Command::ColorXy { .. } => COLOR_XY,
+            Command::Brightness { .. } => BRIGHTNESS,
+            Command::Disconnect => DISCONNECT,
+        }
+    }
 }
 
 impl Command {

@@ -1,0 +1,12 @@
+[package]
+name = "rustbee-common"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bluer = { version = "0.17.1", features = ["full"] }
+color_space = "0.5.4"
+futures = "0.3.30"
+interprocess = { version = "2.2.0", features = ["tokio"] }
+tokio = { version = "1.39.2", features = ["fs"] }
+uuid = "1.10.0"
