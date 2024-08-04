@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 eframe = "0.28.1"
 rustbee-common = { path = "../rustbee-common" }
+tokio = { version = "1.39.2", features = ["rt", "rt-multi-thread"] }

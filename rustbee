@@ -82,14 +82,6 @@ case $1 in
         cd ../rustbee-gui
         cargo clean
     ;;
-    "gui")
-        if [[ ! -f ./rustbee-gui/target/release/rustbee-gui || ! -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
-            echo "Binaries are not built, you must run \`rustbee build gui\` first"
-            exit 1
-        fi
-
-        exec ./rustbee-gui/target/release/rustbee-gui
-    ;;
     "build")
         if [[ $3 == "--docker" || $3 == "-d" ]]; then
             docker=true
@@ -123,8 +115,13 @@ EOF
 )
         docker run --rm --user root -v "$PWD":/usr/src/rustbee -w /usr/src/rustbee rust:$MSRV bash -c "$windows_build_cmds"
     ;;
-    *)
-        if [[ ! -f ./target/release/rustbee || ! -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
+    "gui" | *)
+        if [[ $1 == "gui" && ! -f ./rustbee-gui/target/release/rustbee-gui || ! -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
+            echo "Binaries are not built, you must run \`rustbee build gui\` first"
+            exit 1
+        fi
+
+        if [[ $1 != "gui" && ! -f ./target/release/rustbee || ! -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
             echo "Binaries are not built, you must run \`rustbee build cli\` first"
             exit 1
         fi
@@ -156,6 +153,14 @@ EOF
             fi
         fi
 
-        sudo ./target/release/rustbee $@
+
+        # TODO Change GUI from debug to release
+        if [[ $1 == "gui" ]]; then
+            cd rustbee-gui
+            exec cargo run
+            # exec ./rustbee-gui/target/release/rustbee-gui
+        else
+            exec sudo ./target/release/rustbee $@
+        fi
     ;;
 esac

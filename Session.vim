@@ -14,22 +14,23 @@ else
   set shortmess=aoO
 endif
 badd +6 README.md
-badd +139 rustbee
+badd +157 rustbee
 badd +1 .gitignore
-badd +30 rustbee-gui/src/main.rs
+badd +107 rustbee-gui/src/main.rs
 badd +11 Cargo.toml
 badd +3 rustbee-common/src/lib.rs
 badd +45 rustbee-common/src/constants.rs
-badd +5 src/main.rs
+badd +15 src/main.rs
 badd +16 rustbee-daemon/src/main.rs
 badd +249 rustbee-common/src/colors.rs
-badd +1 rustbee-common/src/bluetooth.rs
-badd +1 rustbee-gui/Cargo.toml
+badd +61 rustbee-common/src/bluetooth.rs
+badd +9 rustbee-gui/Cargo.toml
+badd +78 src/cli.rs
 argglobal
 %argdel
 edit rustbee-gui/src/main.rs
 argglobal
-balt rustbee-gui/Cargo.toml
+balt rustbee
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -40,12 +41,12 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 30 - ((29 * winheight(0) + 27) / 55)
+let s:l = 111 - ((46 * winheight(0) + 27) / 55)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 30
-normal! 013|
+keepjumps 111
+normal! 09|
 lcd ~/work/rustbee
 tabnext 1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0 && getbufvar(s:wipebuf, '&buftype') isnot# 'terminal'
@@ -59,7 +60,6 @@ if filereadable(s:sx)
   exe "source " . fnameescape(s:sx)
 endif
 let &g:so = s:so_save | let &g:siso = s:siso_save
-nohlsearch
 doautoall SessionLoadPost
 unlet SessionLoad
 " vim: set ft=vim :
