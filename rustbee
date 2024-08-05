@@ -5,6 +5,7 @@ MSRV="1.80"
 docker=false
 docker_base_pkgs="(apt-get update && apt-get install -y libdbus-1-dev pkg-config) > /dev/null 2>&1"
 log_path=/var/log/rustbee-daemon.log
+socket_path=$(cat rustbee-common/src/constants.rs | grep "const SOCKET_PATH" | grep -oE '".*"' | sed s/\"//g)
 
 build_cli() {
     if [[ -f ./target/release/rustbee && -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
@@ -67,12 +68,11 @@ build_gui() {
 
 case $1 in
     "shutdown")
-        socket=$(cat rustbee-common/src/constants.rs | grep "const RUN_PATH" | grep -oE '".*"' | sed s/\"//g)
         pid=$(pgrep rustbee-daemon)
         kill -s INT $pid > /dev/null 2>&1
         if [[ $? != 0 ]]; then
             sudo pkill rustbee-daemon
-            sudo rm -f $socket
+            sudo rm -f $socket_path
         fi
     ;;
     "clean_binaries")
@@ -134,8 +134,11 @@ EOF
         pgrep rustbee-daemon > /dev/null 2>&1
         if [[ $? == 1 ]]; then
             status=0
+            sudo rm $log_path > /dev/null 2>&1
+            set -e
             sudo touch $log_path
             sudo chown $(id -u):$(id -g) $log_path
+            sudo chmod 755 $log_path
             (sudo ./rustbee-daemon/target/release/rustbee-daemon > $log_path 2>&1) &
             pid=$!
             sleep 1 # Random low waiting time to check if the bg process has stopped and returned a status code
@@ -153,14 +156,17 @@ EOF
             fi
         fi
 
+        # The file socket must be owned by the user else the gui cannot access it and running the cli/gui as sudo must be avoided
+        sudo chown $(id -u):$(id -g) $socket_path
 
         # TODO Change GUI from debug to release
         if [[ $1 == "gui" ]]; then
             cd rustbee-gui
-            exec cargo run
+            cargo build
+            exec ./target/debug/rustbee-gui
             # exec ./rustbee-gui/target/release/rustbee-gui
         else
-            exec sudo ./target/release/rustbee $@
+            exec ./target/release/rustbee $@
         fi
     ;;
 esac

@@ -2,9 +2,9 @@ use std::f64;
 
 use clap::{Parser, Subcommand};
 use color_space::{FromRgb, Rgb, Xyz};
-use rustbee_common::constants::{masks::*, MaskT, DATA_LEN, GET, SET};
+use rustbee_common::constants::{masks::*, MaskT};
 
-use rustbee_common::bluetooth::HueDevice;
+use rustbee_common::bluetooth::{Client, HueDevice};
 use rustbee_common::colors::Xy;
 
 #[derive(Debug, Parser)]
@@ -61,10 +61,8 @@ impl From<&Command> for MaskT {
 }
 
 impl Command {
-    pub async fn handle(&self, hue_bar: HueDevice) -> bluer::Result<()> {
-        let mut buf = [0u8; DATA_LEN];
-
-        if !hue_bar.send_packet_to_daemon(PAIR, buf).await.0 {
+    pub async fn handle(&self, hue_bar: HueDevice<Client>) -> bluer::Result<()> {
+        if !hue_bar.pair().await {
             eprintln!("Error: failed to pair and trust device {}", hue_bar.addr);
             return Ok(());
         }
@@ -73,13 +71,7 @@ impl Command {
             Self::PairAndTrust => (),
             Self::Power { state } => match state {
                 Some(state) => {
-                    buf[0] = SET;
-                    buf[1] = matches!(*state, State::On) as _;
-                    if !hue_bar
-                        .send_packet_to_daemon(CONNECT | u8::from(self), buf)
-                        .await
-                        .0
-                    {
+                    if !hue_bar.set_power(matches!(*state, State::On)).await {
                         eprintln!(
                             "[ERROR] Failed to write power state to hue bar address: {}",
                             hue_bar.addr
@@ -87,10 +79,7 @@ impl Command {
                     }
                 }
                 None => {
-                    buf[0] = GET;
-                    let (success, state) = hue_bar
-                        .send_packet_to_daemon(CONNECT | u8::from(self), buf)
-                        .await;
+                    let (success, state) = hue_bar.get_power().await;
 
                     if !success {
                         eprintln!(
@@ -120,13 +109,7 @@ impl Command {
                         "[ERROR] Brightness value must be between 0 and 100 inclusive"
                     );
 
-                    buf[0] = SET;
-                    buf[1] = (((*value as f32) / 100.) * 0xff as f32) as _;
-                    if !hue_bar
-                        .send_packet_to_daemon(CONNECT | u8::from(self), buf)
-                        .await
-                        .0
-                    {
+                    if !hue_bar.set_brightness(*value).await {
                         eprintln!(
                             "[ERROR] Failed to write brightness state to hue bar address: {}",
                             hue_bar.addr
@@ -134,10 +117,7 @@ impl Command {
                     }
                 }
                 None => {
-                    buf[0] = GET;
-                    let (success, brightness) = hue_bar
-                        .send_packet_to_daemon(CONNECT | u8::from(self), buf)
-                        .await;
+                    let (success, brightness) = hue_bar.get_brightness().await;
 
                     if !success {
                         eprintln!(
@@ -225,10 +205,7 @@ impl Command {
                 };
 
                 if read {
-                    buf[0] = GET;
-                    let (success, data) = hue_bar
-                        .send_packet_to_daemon(CONNECT | u8::from(self), buf)
-                        .await;
+                    let (success, data) = hue_bar.get_colors(u8::from(self)).await;
 
                     if !success {
                         eprintln!(
@@ -244,10 +221,7 @@ impl Command {
                         // TODO: Fix colors display / color processing
                         match self {
                             Self::ColorRgb { .. } => {
-                                buf[0] = GET;
-                                let (success, brightness) = hue_bar
-                                    .send_packet_to_daemon(CONNECT | BRIGHTNESS, buf)
-                                    .await;
+                                let (success, brightness) = hue_bar.get_brightness().await;
 
                                 if !success {
                                     eprintln!(
@@ -285,17 +259,7 @@ impl Command {
                     let scaled_x = (x * 0xFFFF as f64) as u16;
                     let scaled_y = (y * 0xFFFF as f64) as u16;
 
-                    buf[0] = SET;
-                    buf[1] = (scaled_x & 0xFF) as _;
-                    buf[2] = (scaled_x >> 8) as _;
-                    buf[3] = (scaled_y & 0xFF) as _;
-                    buf[4] = (scaled_y >> 8) as _;
-
-                    if !hue_bar
-                        .send_packet_to_daemon(CONNECT | u8::from(self), buf)
-                        .await
-                        .0
-                    {
+                    if !hue_bar.set_colors(scaled_x, scaled_y, u8::from(self)).await {
                         eprintln!(
                             "Error: daemon failed to disconnect from device {}",
                             hue_bar.addr
@@ -304,7 +268,7 @@ impl Command {
                 }
             }
             Self::Disconnect => {
-                if !hue_bar.send_packet_to_daemon(u8::from(self), buf).await.0 {
+                if !hue_bar.disconnect_device().await {
                     eprintln!(
                         "Error: daemon failed to disconnect from device {}",
                         hue_bar.addr

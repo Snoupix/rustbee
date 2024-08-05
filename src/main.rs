@@ -12,6 +12,8 @@ async fn main() -> bluer::Result<()> {
     let command: &mut Command = Box::leak(Box::new(args.command));
     let mut tasks = Vec::new();
 
+    // Returns Result<Vec<HueDevice<Client>>> infered because the Command::handle fn requires a
+    // Client variant so the turbofish would be useless
     let hue_bars = get_devices(&match &args.hex_mac_addresses {
         Some(values) => values
             .clone()

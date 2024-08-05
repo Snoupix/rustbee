@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::time::Duration;
@@ -7,6 +8,7 @@ use bluer::{
     gatt::remote::{Characteristic as BlueCharacteristic, Service as BlueService},
     AdapterEvent, Address, Device, Session,
 };
+use flags::{COLOR_HEX, COLOR_RGB};
 use futures::StreamExt;
 use interprocess::{
     local_socket::{tokio::Stream, traits::tokio::Stream as _, ToFsName as _},
@@ -18,16 +20,43 @@ use tokio::{
 };
 use uuid::Uuid;
 
-use crate::constants::*;
+use crate::constants::{masks::*, *};
 
-#[derive(Debug, Default)]
-pub struct HueDevice {
+#[derive(Clone, Debug, Default)]
+pub struct Client;
+#[derive(Clone, Debug, Default)]
+pub struct Server;
+
+#[derive(Clone, Debug)]
+pub struct HueDevice<Type> {
     pub addr: Address,
     pub device: Option<Device>,
     pub services: Option<Vec<Service>>,
+    _type: PhantomData<Type>,
 }
 
-#[derive(Debug)]
+impl Default for HueDevice<Server> {
+    fn default() -> Self {
+        Self {
+            addr: Default::default(),
+            device: Default::default(),
+            services: Default::default(),
+            _type: Default::default(),
+        }
+    }
+}
+impl Default for HueDevice<Client> {
+    fn default() -> Self {
+        Self {
+            addr: Default::default(),
+            device: Default::default(),
+            services: Default::default(),
+            _type: Default::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Service {
     pub uuid: Uuid,
     pub id: u16,
@@ -35,29 +64,70 @@ pub struct Service {
     pub inner: BlueService,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Characteristic {
     pub uuid: Uuid,
     pub id: u16,
     pub inner: BlueCharacteristic,
 }
 
-impl HueDevice {
-    fn new(addr: Address) -> Self {
+impl Deref for Service {
+    type Target = BlueService;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl Deref for Characteristic {
+    type Target = BlueCharacteristic;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<T> Deref for HueDevice<T> {
+    type Target = Device;
+
+    /// Be sure to use it wisely since it NEEDS to have the device set
+    fn deref(&self) -> &Self::Target {
+        self.device.as_ref().unwrap()
+    }
+}
+
+impl<T> HueDevice<T>
+where
+    HueDevice<T>: Default + Deref<Target = Device> + std::fmt::Debug,
+{
+    pub fn new(addr: Address) -> Self {
         Self {
             addr,
             ..Default::default()
         }
     }
 
-    fn set_device(&mut self, device: Device) {
+    pub fn new_with_device(addr: Address, device: Device) -> Self {
+        Self {
+            addr,
+            device: Some(device),
+            ..Default::default()
+        }
+    }
+
+    pub fn set_device(&mut self, device: Device) {
         self.device = Some(device);
     }
 
-    fn unset_device(&mut self) {
+    pub fn unset_device(&mut self) {
         self.device = None;
     }
+}
 
+impl HueDevice<Server>
+where
+    HueDevice<Server>: Default + Deref<Target = Device> + std::fmt::Debug,
+{
     pub async fn set_services(&mut self) -> bluer::Result<()> {
         let mut services = Vec::new();
 
@@ -237,38 +307,42 @@ impl HueDevice {
     }
 
     pub async fn get_power(&self) -> bluer::Result<bool> {
-        let read = self.read_gatt_char(&LIGHT_SERVICES, &POWER).await?;
+        let read = self
+            .read_gatt_char(&LIGHT_SERVICES_UUID, &POWER_UUID)
+            .await?;
         if let Some(bytes) = read {
             Ok(*bytes.first().unwrap() == true as _)
         } else {
             Err(bluer::Error {
                 kind: bluer::ErrorKind::InvalidArguments,
-                message: format!("[ERROR] Service or Characteristic \"{POWER}\" for \"{LIGHT_SERVICES}\" not found for device {}", self.addr)
+                message: format!("[ERROR] Service or Characteristic \"{POWER}\" for \"{LIGHT_SERVICES_UUID}\" not found for device {}", self.addr)
             })
         }
     }
 
     pub async fn set_power(&self, value: u8) -> bluer::Result<()> {
-        self.write_gatt_char(&LIGHT_SERVICES, &POWER, &[value])
+        self.write_gatt_char(&LIGHT_SERVICES_UUID, &POWER_UUID, &[value])
             .await?;
 
         Ok(())
     }
 
     pub async fn get_brightness(&self) -> bluer::Result<f32> {
-        let read = self.read_gatt_char(&LIGHT_SERVICES, &BRIGHTNESS).await?;
+        let read = self
+            .read_gatt_char(&LIGHT_SERVICES_UUID, &BRIGHTNESS_UUID)
+            .await?;
         if let Some(bytes) = read {
             Ok(*bytes.first().unwrap() as f32)
         } else {
             Err(bluer::Error {
                 kind: bluer::ErrorKind::InvalidArguments,
-                message: format!("[ERROR] Service or Characteristic \"{BRIGHTNESS}\" for \"{LIGHT_SERVICES}\" not found for device {}", self.addr)
+                message: format!("[ERROR] Service or Characteristic \"{BRIGHTNESS}\" for \"{LIGHT_SERVICES_UUID}\" not found for device {}", self.addr)
             })
         }
     }
 
     pub async fn set_brightness(&self, value: u8) -> bluer::Result<()> {
-        self.write_gatt_char(&LIGHT_SERVICES, &BRIGHTNESS, &[value])
+        self.write_gatt_char(&LIGHT_SERVICES_UUID, &BRIGHTNESS_UUID, &[value])
             .await?;
 
         Ok(())
@@ -276,7 +350,10 @@ impl HueDevice {
 
     pub async fn get_color(&self) -> bluer::Result<[u8; 4]> {
         let mut buf = [0u8; 4];
-        if let Some(bytes) = self.read_gatt_char(&LIGHT_SERVICES, &COLOR).await? {
+        if let Some(bytes) = self
+            .read_gatt_char(&LIGHT_SERVICES_UUID, &COLOR_UUID)
+            .await?
+        {
             let len = buf.len();
             buf.copy_from_slice(&bytes[..len]);
 
@@ -284,34 +361,111 @@ impl HueDevice {
         } else {
             Err(bluer::Error {
                 kind: bluer::ErrorKind::InvalidArguments,
-                message: format!("[ERROR] Service or Characteristic \"{COLOR}\" for \"{LIGHT_SERVICES}\" not found for device {}", self.addr)
+                message: format!("[ERROR] Service or Characteristic \"{COLOR_UUID}\" for \"{LIGHT_SERVICES_UUID}\" not found for device {}", self.addr)
             })
         }
     }
 
     pub async fn set_color(&self, buf: [u8; 4]) -> bluer::Result<()> {
-        self.write_gatt_char(&LIGHT_SERVICES, &COLOR, &buf).await?;
+        self.write_gatt_char(&LIGHT_SERVICES_UUID, &COLOR_UUID, &buf)
+            .await?;
 
         Ok(())
     }
+}
 
-    pub async fn send_packet_to_daemon(
-        &self,
-        flags: MaskT,
-        data: [u8; DATA_LEN],
-    ) -> (bool, [u8; OUTPUT_LEN - 1]) {
+type CmdOutput = (bool, [u8; OUTPUT_LEN - 1]);
+
+impl HueDevice<Client>
+where
+    HueDevice<Client>: Default + Deref<Target = Device> + std::fmt::Debug,
+{
+    pub async fn pair(&self) -> bool {
+        self.send_packet_to_daemon(PAIR, [0; 6]).await.0
+    }
+
+    pub async fn set_power(&self, state: bool) -> bool {
+        let mut buf = [0u8; DATA_LEN];
+        buf[0] = SET;
+        buf[1] = state as _;
+
+        self.send_packet_to_daemon(CONNECT | POWER, buf).await.0
+    }
+
+    pub async fn get_power(&self) -> CmdOutput {
+        let mut buf = [0u8; DATA_LEN];
+        buf[0] = GET;
+
+        self.send_packet_to_daemon(CONNECT | POWER, buf).await
+    }
+
+    pub async fn set_brightness(&self, value: u8) -> bool {
+        let mut buf = [0u8; DATA_LEN];
+        buf[0] = SET;
+        buf[1] = (((value as f32) / 100.) * 0xff as f32) as _;
+
+        self.send_packet_to_daemon(CONNECT | BRIGHTNESS, buf)
+            .await
+            .0
+    }
+
+    pub async fn get_brightness(&self) -> CmdOutput {
+        let mut buf = [0u8; DATA_LEN];
+        buf[0] = GET;
+
+        self.send_packet_to_daemon(CONNECT | BRIGHTNESS, buf).await
+    }
+
+    pub async fn get_colors(&self, color_mask: u8) -> CmdOutput {
+        assert!([COLOR_XY, COLOR_RGB, COLOR_HEX].contains(&color_mask));
+
+        let mut buf = [0u8; DATA_LEN];
+        buf[0] = GET;
+
+        self.send_packet_to_daemon(CONNECT | color_mask, buf).await
+    }
+
+    pub async fn set_colors(&self, scaled_x: u16, scaled_y: u16, color_mask: u8) -> bool {
+        assert!([COLOR_XY, COLOR_RGB, COLOR_HEX].contains(&color_mask));
+
+        let mut buf = [0u8; DATA_LEN];
+        buf[0] = SET;
+        buf[1] = (scaled_x & 0xFF) as _;
+        buf[2] = (scaled_x >> 8) as _;
+        buf[3] = (scaled_y & 0xFF) as _;
+        buf[4] = (scaled_y >> 8) as _;
+
+        self.send_packet_to_daemon(CONNECT | color_mask, buf)
+            .await
+            .0
+    }
+
+    pub async fn disconnect_device(&self) -> bool {
+        let mut buf = [0u8; DATA_LEN];
+        buf[0] = GET;
+
+        self.send_packet_to_daemon(DISCONNECT, buf).await.0
+    }
+
+    pub async fn connect_device(&self) -> bool {
+        let mut buf = [0u8; DATA_LEN];
+        buf[0] = GET;
+
+        self.send_packet_to_daemon(CONNECT, buf).await.0
+    }
+
+    async fn send_packet_to_daemon(&self, flags: MaskT, data: [u8; DATA_LEN]) -> CmdOutput {
         let mut output = [0; OUTPUT_LEN - 1];
-        let path = get_path().await;
 
-        let fs_name = path
+        let fs_name = SOCKET_PATH
             .to_fs_name::<FilesystemUdSocket>()
             .unwrap_or_else(|error| {
                 eprintln!("Error cannot create filesystem path name: {error}");
-                std::process::exit(1);
+                std::process::exit(2);
             });
         let mut stream = Stream::connect(fs_name).await.unwrap_or_else(|error| {
-            eprintln!("Error cannot connect to file socket name: {path} => {error}");
-            std::process::exit(1);
+            eprintln!("Error cannot connect to file socket name: {SOCKET_PATH} => {error}");
+            std::process::exit(2);
         });
 
         let mut chunks = [0; BUFFER_LEN];
@@ -328,7 +482,7 @@ impl HueDevice {
 
         let mut buf = [0; OUTPUT_LEN];
         if let Err(error) = stream.read_exact(&mut buf).await {
-            eprintln!("Error cannot read daemon output, please check daemon.log file ({error})");
+            eprintln!("Error cannot read daemon output, please check /var/log/rustbee-daemon.log file ({error})");
             return (false, output);
         }
 
@@ -340,32 +494,11 @@ impl HueDevice {
     }
 }
 
-impl Deref for Service {
-    type Target = BlueService;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl Deref for Characteristic {
-    type Target = BlueCharacteristic;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl Deref for HueDevice {
-    type Target = Device;
-
-    /// Be sure to use it wisely since it NEEDS to have the device set
-    fn deref(&self) -> &Self::Target {
-        self.device.as_ref().unwrap()
-    }
-}
-
-pub async fn get_devices(addrs: &[[u8; 6]]) -> bluer::Result<Vec<HueDevice>> {
+pub async fn get_devices<T>(addrs: &[[u8; 6]]) -> bluer::Result<Vec<HueDevice<T>>>
+where
+    T: std::fmt::Debug,
+    HueDevice<T>: Default,
+{
     let session = Session::new().await?;
     let adapter = session.default_adapter().await?;
 
@@ -375,7 +508,7 @@ pub async fn get_devices(addrs: &[[u8; 6]]) -> bluer::Result<Vec<HueDevice>> {
 
     let mut discovery = adapter.discover_devices().await?;
     let mut pinned_disco = unsafe { Pin::new_unchecked(&mut discovery) };
-    let mut addresses: HashMap<[u8; 6], HueDevice> = HashMap::with_capacity(addrs.len());
+    let mut addresses: HashMap<[u8; 6], HueDevice<T>> = HashMap::with_capacity(addrs.len());
 
     addrs.iter().for_each(|addr| {
         addresses.insert(*addr, HueDevice::new(Address::new(*addr)));

@@ -7,6 +7,7 @@ use interprocess::local_socket::{
     tokio::Stream, traits::tokio::Listener as _, ListenerNonblockingMode, ListenerOptions, ToFsName,
 };
 use interprocess::os::unix::local_socket::FilesystemUdSocket;
+use tokio::fs;
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
     signal,
@@ -16,10 +17,20 @@ use tokio::{
 use rustbee_common::bluetooth::*;
 
 use rustbee_common::constants::{
-    flags::CONNECT, get_path, MaskT, BUFFER_LEN, FAILURE, OUTPUT_LEN, SET, SUCCESS,
+    flags::CONNECT, MaskT, BUFFER_LEN, FAILURE, OUTPUT_LEN, SET, SOCKET_PATH, SUCCESS,
 };
 
 const TIMEOUT_SECS: u64 = 60 * 5;
+
+enum Command {
+    PairAndTrust,
+    Power,
+    ColorRgb,
+    ColorHex,
+    ColorXy,
+    Brightness,
+    Disconnect,
+}
 
 /// converts Result<T, E> into SUCCESS or FAILURE (1 or 0)
 macro_rules! res_to_u8 {
@@ -30,17 +41,17 @@ macro_rules! res_to_u8 {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    let path = get_path().await;
+    check_if_path_is_writable().await;
 
-    if Path::new(path).exists() {
+    if Path::new(SOCKET_PATH).exists() {
         eprintln!("Error: socket is already in use, an instance might already be running");
         std::process::exit(2);
     }
 
-    let fs_name = path
+    let fs_name = SOCKET_PATH
         .to_fs_name::<FilesystemUdSocket>()
         .unwrap_or_else(|error| {
-            eprintln!("Error cannot create filesystem path name: {path} => {error}");
+            eprintln!("Error cannot create filesystem path name: {SOCKET_PATH} => {error}");
             std::process::exit(1);
         });
 
@@ -57,7 +68,7 @@ async fn main() {
         }
     };
 
-    let mut devices: HashMap<[u8; 6], HueDevice> = HashMap::new();
+    let mut devices: HashMap<[u8; 6], HueDevice<Server>> = HashMap::new();
 
     loop {
         tokio::select! {
@@ -75,7 +86,7 @@ async fn main() {
     for (_, device) in devices {
         let _ = device.try_disconnect().await;
     }
-    std::fs::remove_file(path).unwrap();
+    std::fs::remove_file(SOCKET_PATH).unwrap();
 }
 
 /*
@@ -83,7 +94,10 @@ async fn main() {
  * - When setting up a new device, Pair & Trust it, connect and retrieve services to index them by UUID
  * - Respond with [SUCCESS | FAILURE, DATA if any or filled with 0u8]
  */
-async fn process_conn(conn: Result<Stream, Error>, devices: &mut HashMap<[u8; 6], HueDevice>) {
+async fn process_conn(
+    conn: Result<Stream, Error>,
+    devices: &mut HashMap<[u8; 6], HueDevice<Server>>,
+) {
     match conn {
         Ok(mut stream) => {
             let mut buf = [0; BUFFER_LEN];
@@ -103,14 +117,7 @@ async fn process_conn(conn: Result<Stream, Error>, devices: &mut HashMap<[u8; 6]
             if devices.get(&addr).is_none() {
                 let device = adapter.device(Address::new(addr)).unwrap();
 
-                devices.insert(
-                    addr,
-                    HueDevice {
-                        addr: device.address(),
-                        services: None,
-                        device: Some(device),
-                    },
-                );
+                devices.insert(addr, HueDevice::new_with_device(device.address(), device));
             }
             let hue_device = devices.get_mut(&addr).unwrap();
             if hue_device.services.is_none() {
@@ -204,6 +211,27 @@ async fn process_conn(conn: Result<Stream, Error>, devices: &mut HashMap<[u8; 6]
     }
 }
 
+async fn check_if_path_is_writable() {
+    if fs::read_dir("/var/run").await.is_err() {
+        eprintln!("Cannot find /var/run directory or lacking permissions to read it");
+        std::process::exit(2);
+    }
+
+    if fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open("/var/run/x")
+        .await
+        .is_err()
+    {
+        eprintln!("Lacking permissions to write to /var/run directory");
+        std::process::exit(2);
+    }
+
+    let _ = fs::remove_file("/var/run/x").await;
+}
+
 async fn get_adapter() -> bluer::Result<Adapter> {
     let session = Session::new().await?;
     let adapter = session.default_adapter().await?;
@@ -213,16 +241,6 @@ async fn get_adapter() -> bluer::Result<Adapter> {
     }
 
     Ok(adapter)
-}
-
-enum Command {
-    PairAndTrust,
-    Power,
-    ColorRgb,
-    ColorHex,
-    ColorXy,
-    Brightness,
-    Disconnect,
 }
 
 fn get_commands_from_flags(flags: MaskT) -> Vec<Command> {
