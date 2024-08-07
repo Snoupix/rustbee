@@ -1,14 +1,16 @@
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use eframe::egui::{self, color_picker, CentralPanel};
 use eframe::{CreationContext, NativeOptions};
-use poll_promise::Promise;
 use tokio::runtime::{self, Runtime};
-use tokio::sync::RwLock;
-use tokio::time;
+use tokio::sync::{
+    watch::{channel, Receiver},
+    RwLock,
+};
+use tokio::time::{self, Instant};
 
 use rustbee_common::bluetooth::{get_devices, Client, HueDevice};
 use rustbee_common::color_space::Rgb;
@@ -16,6 +18,9 @@ use rustbee_common::colors::Xy;
 use rustbee_common::constants::{flags::COLOR_RGB, HUE_BAR_1_ADDR, HUE_BAR_2_ADDR};
 
 struct HueDeviceWrapper {
+    // Since most of the time, fields are already initiated, using Option<T> would just make everything
+    // more verbose
+    is_initiated: bool,
     last_update: Instant,
     is_connected: bool,
     power_state: bool,
@@ -40,6 +45,7 @@ impl From<HueDevice<Client>> for HueDeviceWrapper {
             power_state: false,
             brightness: 0,
             current_color: [0; 3],
+            is_initiated: false,
             last_update: Instant::now(),
         }
     }
@@ -50,7 +56,7 @@ type AppDevices = HashMap<[u8; 6], HueDeviceWrapper>;
 struct App {
     tokio_rt: Runtime,
     devices: Arc<RwLock<AppDevices>>,
-    promise: Option<Promise<bool>>,
+    channel: Option<Receiver<bool>>,
 }
 
 impl App {
@@ -66,68 +72,175 @@ impl App {
         Box::new(Self {
             devices,
             tokio_rt,
-            promise: None,
+            channel: None,
         })
     }
 }
 
 macro_rules! run_promise {
-    ($rt:expr, $f:expr) => {{
-        let (sender, promise) = Promise::new();
+    ($rt:expr, $f:expr, $bloc:expr) => {{
+        let (tx, rx) = channel(false);
 
         $rt.spawn(async move {
-            sender.send($f.await);
+            let res = $f.await;
+            tx.send(res).unwrap();
+
+            if res {
+                $bloc
+            }
         });
 
-        promise
+        rx
     }};
 }
-
-/* fn run_promise<F, R>(rt: &Runtime, f: F) -> Promise<R>
-where
-    F: Future<Output = R> + Send + 'static,
-    R: Copy + Send,
-{
-    let (sender, promise) = Promise::new();
-
-    rt.spawn(async move {
-        sender.send(f.await);
-    });
-
-    promise
-} */
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         CentralPanel::default().show(ctx, |ui| {
-            if let Some(promise) = &self.promise {
-                if let Some(result) = promise.ready() {
-                    match *result {
-                        true => {
-                            ui.label("success");
-                        }
-                        false => {
-                            ui.colored_label(ui.visuals().error_fg_color, "Error");
+            if let Some(ref mut rx) = self.channel {
+                match rx.has_changed() {
+                    Ok(changed) => {
+                        if changed {
+                            if !*rx.borrow_and_update() {
+                                ui.colored_label(ui.visuals().error_fg_color, "Error");
+                            }
+                            self.channel = None;
+                        } else {
+                            ui.centered_and_justified(|ui| {
+                                ui.spinner();
+                            });
+                            return;
                         }
                     }
-                    self.promise = None;
-                } else {
-                    ui.centered_and_justified(|ui| {
-                        ui.spinner();
-                    });
-                    return;
+                    Err(_) => {
+                        self.channel = None;
+                    }
                 }
             }
 
-            let mut devices = self.tokio_rt.block_on(self.devices.write());
+            let devices = Arc::clone(&self.devices);
+            let mut devices_mut = self.tokio_rt.block_on(self.devices.write());
 
-            for (addr, device) in devices.iter_mut() {
+            if ui.button("new connect").clicked() {
+                self.channel = Some(run_promise!(
+                    &self.tokio_rt,
+                    async {
+                        let devices = devices.read().await;
+                        let futures = devices
+                            .iter()
+                            .map(|(_, device)| device.connect_device())
+                            .collect::<Vec<_>>();
+                        futures::future::join_all(futures).await;
+                        true
+                    },
+                    {
+                        let mut lock = devices.write().await;
+                        for (_, device) in lock.iter_mut() {
+                            update_device_state(device).await;
+                        }
+                    }
+                ));
+                return;
+            }
+
+            if ui.button("Power OFF all devices").clicked() {
+                self.channel = Some(run_promise!(
+                    &self.tokio_rt,
+                    async {
+                        let devices = devices.read().await;
+                        let futures = devices
+                            .iter()
+                            .map(|(_, device)| device.set_power(false))
+                            .collect::<Vec<_>>();
+                        futures::future::join_all(futures).await;
+                        true
+                    },
+                    {
+                        let mut lock = devices.write().await;
+                        lock.iter_mut().for_each(|(_, device)| {
+                            device.power_state = false;
+                        });
+                    }
+                ));
+                return;
+            }
+
+            if ui.button("Power ON all devices").clicked() {
+                self.channel = Some(run_promise!(
+                    &self.tokio_rt,
+                    async {
+                        let devices = devices.read().await;
+                        let futures = devices
+                            .iter()
+                            .map(|(_, device)| device.set_power(true))
+                            .collect::<Vec<_>>();
+                        futures::future::join_all(futures).await;
+                        true
+                    },
+                    {
+                        let mut lock = devices.write().await;
+                        lock.iter_mut().for_each(|(_, device)| {
+                            device.power_state = true;
+                        });
+                    }
+                ));
+                return;
+            }
+
+            if ui.button("Disconnect from all devices").clicked() {
+                self.channel = Some(run_promise!(
+                    &self.tokio_rt,
+                    async {
+                        let devices = devices.read().await;
+                        let futures = devices
+                            .iter()
+                            .map(|(_, device)| device.disconnect_device())
+                            .collect::<Vec<_>>();
+                        futures::future::join_all(futures).await;
+                        true
+                    },
+                    {
+                        let mut lock = devices.write().await;
+                        for (_, device) in lock.iter_mut() {
+                            update_device_state(device).await;
+                        }
+                    }
+                ));
+                return;
+            }
+
+            if ui.button("Connect to all devices").clicked() {
+                self.channel = Some(run_promise!(
+                    &self.tokio_rt,
+                    async {
+                        let devices = devices.read().await;
+                        let futures = devices
+                            .iter()
+                            .map(|(_, device)| device.connect_device())
+                            .collect::<Vec<_>>();
+                        futures::future::join_all(futures).await;
+                        true
+                    },
+                    {
+                        let mut lock = devices.write().await;
+                        for (_, device) in lock.iter_mut() {
+                            update_device_state(device).await;
+                        }
+                    }
+                ));
+                return;
+            }
+
+            for (addr, device) in devices_mut.iter_mut() {
+                let addr = *addr;
                 ui.label("Device:");
                 ui.label(format!("Hex UUID: {:?}", addr));
                 ui.label(format!("Is connected: {}", device.is_connected));
                 if device.is_connected {
                     ui.label(format!("Brightness: {}%", device.brightness));
-                    if color_picker::color_edit_button_srgb(ui, &mut device.current_color).changed()
+                    if self.channel.is_none()
+                        && color_picker::color_edit_button_srgb(ui, &mut device.current_color)
+                            .changed()
                     {
                         let (r, g, b) = (
                             device.current_color[0],
@@ -140,9 +253,10 @@ impl eframe::App for App {
                             brightness: _,
                         } = Xy::from(Rgb::new(r as _, g as _, b as _));
                         let device = device.clone();
-                        self.promise = Some(run_promise!(
+                        self.channel = Some(run_promise!(
                             &self.tokio_rt,
-                            device.set_colors(x as _, y as _, COLOR_RGB)
+                            device.set_colors(x as _, y as _, COLOR_RGB),
+                            {}
                         ));
                     }
                     ui.label(format!("Current color is {:?}", device.current_color));
@@ -150,22 +264,47 @@ impl eframe::App for App {
                     if device.power_state {
                         if ui.button("Power OFF").clicked() {
                             let device = device.clone();
-                            self.promise =
-                                Some(run_promise!(&self.tokio_rt, device.set_power(false)));
+
+                            self.channel =
+                                Some(run_promise!(&self.tokio_rt, device.set_power(false), {
+                                    let mut lock = devices.write().await;
+                                    let device = lock.get_mut(&addr).unwrap();
+                                    device.power_state = false;
+                                }));
+                            return;
                         }
                     } else if ui.button("Power ON").clicked() {
                         let device = device.clone();
-                        self.promise = Some(run_promise!(&self.tokio_rt, device.set_power(true)));
+
+                        self.channel =
+                            Some(run_promise!(&self.tokio_rt, device.set_power(true), {
+                                let mut lock = devices.write().await;
+                                let device = lock.get_mut(&addr).unwrap();
+                                device.power_state = true;
+                            }));
+                        return;
                     }
 
                     if ui.button("Disconnect from device").clicked() {
                         let device = device.clone();
-                        self.promise =
-                            Some(run_promise!(&self.tokio_rt, device.disconnect_device()));
+
+                        self.channel =
+                            Some(run_promise!(&self.tokio_rt, device.disconnect_device(), {
+                                let mut lock = devices.write().await;
+                                let device = lock.get_mut(&addr).unwrap();
+                                update_device_state(device).await;
+                            }));
+                        return;
                     }
                 } else if ui.button("Connect to device").clicked() {
                     let device = device.clone();
-                    self.promise = Some(run_promise!(&self.tokio_rt, device.connect_device()));
+
+                    self.channel = Some(run_promise!(&self.tokio_rt, device.connect_device(), {
+                        let mut lock = devices.write().await;
+                        let device = lock.get_mut(&addr).unwrap();
+                        update_device_state(device).await;
+                    }));
+                    return;
                 }
             }
         });
@@ -184,7 +323,7 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
 
-    // Async runtime to sync current device data on state
+    // Thread used to init devices state and sync devices state on a timout
     rt.spawn(async move {
         // TODO: Use the save method and load devices for users to use
         let mut hue_devices = get_devices(&[HUE_BAR_1_ADDR, HUE_BAR_2_ADDR])
@@ -202,29 +341,15 @@ fn main() -> eframe::Result {
             .map(|(addr, device)| (addr, device.into()))
             .collect::<AppDevices>();
 
+        // There must be a loop to update state in case devices state gets updated by a thrird party app
         loop {
             for (_, device) in state_async.write().await.iter_mut() {
-                if device.last_update.elapsed() < Duration::from_secs(5) {
+                if device.is_initiated || device.last_update.elapsed() < Duration::from_secs(60 * 2)
+                {
                     continue;
                 }
 
-                if let Ok(v) = device.is_connected().await {
-                    device.is_connected = v;
-                }
-
-                if device.is_connected {
-                    let ((success, buf), (success_b, buf_b)) =
-                        tokio::join!(device.get_colors(COLOR_RGB), device.get_brightness());
-                    if success && success_b {
-                        let x = u16::from_le_bytes([buf[0], buf[1]]) as f64 / 0xFFFF as f64;
-                        let y = u16::from_le_bytes([buf[2], buf[3]]) as f64 / 0xFFFF as f64;
-                        let xy = Xy::new(x, y);
-                        let rgb = xy.to_rgb(buf_b[0] as f64 / 255.);
-
-                        device.current_color = [rgb.r as _, rgb.g as _, rgb.b as _];
-                    }
-                }
-                device.last_update = Instant::now();
+                update_device_state(device).await;
             }
 
             time::sleep(Duration::from_millis(500)).await;
@@ -238,4 +363,30 @@ fn main() -> eframe::Result {
     )?;
 
     Ok(())
+}
+
+async fn update_device_state(device: &mut HueDeviceWrapper) {
+    if let Ok(v) = device.is_connected().await {
+        device.is_connected = v;
+    }
+
+    if device.is_connected {
+        let ((succ_color, buf_color), (succ_bright, buf_bright), (succ_power, buf_power)) = tokio::join!(
+            device.get_colors(COLOR_RGB),
+            device.get_brightness(),
+            device.get_power(),
+        );
+        if succ_color && succ_bright && succ_power {
+            let x = u16::from_le_bytes([buf_color[0], buf_color[1]]) as f64 / 0xFFFF as f64;
+            let y = u16::from_le_bytes([buf_color[2], buf_color[3]]) as f64 / 0xFFFF as f64;
+            let xy = Xy::new(x, y);
+            let rgb = xy.to_rgb(buf_bright[0] as f64 / 255.);
+
+            device.current_color = [rgb.r as _, rgb.g as _, rgb.b as _];
+            device.brightness = ((buf_bright[0] as f64 / 255.) * 100.) as _;
+            device.power_state = *buf_power.first().unwrap() == 1;
+        }
+    }
+    device.is_initiated = true;
+    device.last_update = Instant::now();
 }

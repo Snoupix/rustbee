@@ -5,6 +5,6 @@ edition = "2021"
 
 [dependencies]
 eframe = "0.28.1"
-poll-promise = { version = "0.3.0", features = ["tokio"] }
+futures = "0.3.30"
 rustbee-common = { path = "../rustbee-common" }
-tokio = { version = "1.39.2", features = ["rt", "rt-multi-thread"] }
+tokio = { version = "1.39.2", features = ["rt", "rt-multi-thread", "sync"] }

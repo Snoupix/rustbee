@@ -8,7 +8,6 @@ use bluer::{
     gatt::remote::{Characteristic as BlueCharacteristic, Service as BlueService},
     AdapterEvent, Address, Device, Session,
 };
-use flags::{COLOR_HEX, COLOR_RGB};
 use futures::StreamExt;
 use interprocess::{
     local_socket::{tokio::Stream, traits::tokio::Stream as _, ToFsName as _},
@@ -20,7 +19,11 @@ use tokio::{
 };
 use uuid::Uuid;
 
-use crate::constants::{masks::*, *};
+use crate::constants::{
+    flags::{COLOR_HEX, COLOR_RGB},
+    masks::*,
+    *,
+};
 
 #[derive(Clone, Debug, Default)]
 pub struct Client;
@@ -315,7 +318,7 @@ where
         } else {
             Err(bluer::Error {
                 kind: bluer::ErrorKind::InvalidArguments,
-                message: format!("[ERROR] Service or Characteristic \"{POWER}\" for \"{LIGHT_SERVICES_UUID}\" not found for device {}", self.addr)
+                message: format!("[ERROR] Service or Characteristic \"{POWER_UUID}\" for \"{LIGHT_SERVICES_UUID}\" not found for device {}", self.addr)
             })
         }
     }
@@ -336,7 +339,7 @@ where
         } else {
             Err(bluer::Error {
                 kind: bluer::ErrorKind::InvalidArguments,
-                message: format!("[ERROR] Service or Characteristic \"{BRIGHTNESS}\" for \"{LIGHT_SERVICES_UUID}\" not found for device {}", self.addr)
+                message: format!("[ERROR] Service or Characteristic \"{BRIGHTNESS_UUID}\" for \"{LIGHT_SERVICES_UUID}\" not found for device {}", self.addr)
             })
         }
     }

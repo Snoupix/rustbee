@@ -22,6 +22,7 @@ use rustbee_common::constants::{
 
 const TIMEOUT_SECS: u64 = 60 * 5;
 
+#[derive(Debug)]
 enum Command {
     PairAndTrust,
     Power,

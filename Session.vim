@@ -16,14 +16,14 @@ endif
 badd +6 README.md
 badd +166 rustbee
 badd +1 .gitignore
-badd +222 rustbee-gui/src/main.rs
+badd +192 rustbee-gui/src/main.rs
 badd +11 Cargo.toml
 badd +5 rustbee-common/src/lib.rs
 badd +56 rustbee-common/src/constants.rs
 badd +16 src/main.rs
-badd +154 rustbee-daemon/src/main.rs
-badd +249 rustbee-common/src/colors.rs
-badd +35 rustbee-common/src/bluetooth.rs
+badd +156 rustbee-daemon/src/main.rs
+badd +130 rustbee-common/src/colors.rs
+badd +461 rustbee-common/src/bluetooth.rs
 badd +9 rustbee-gui/Cargo.toml
 badd +216 src/cli.rs
 badd +1 rustbee-common/src/server.rs
@@ -38,7 +38,7 @@ set winheight=1
 set winminwidth=0
 set winwidth=1
 argglobal
-balt rustbee-common/src/colors.rs
+balt rustbee-daemon/src/main.rs
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -49,12 +49,12 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 217 - ((41 * winheight(0) + 27) / 55)
+let s:l = 193 - ((27 * winheight(0) + 27) / 55)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 217
-normal! 025|
+keepjumps 193
+normal! 058|
 lcd ~/work/rustbee
 tabnext 1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0 && getbufvar(s:wipebuf, '&buftype') isnot# 'terminal'

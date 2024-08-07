@@ -111,6 +111,7 @@ impl Xy {
 
         eprintln!("values after calc {:?} {:?}", self, (r, g, b));
 
+        /*
         assert!(
             (0.0..1.).contains(&r),
             "After conversion, R should be between 0. && 1. Actual value {r}"
@@ -123,8 +124,9 @@ impl Xy {
             (0.0..1.).contains(&b),
             "After conversion, B should be between 0. && 1. Actual value {b}"
         );
+        */
 
-        Rgb::new(r, g, b)
+        Rgb::new(r * 255., g * 255., b * 255.)
     }
 
     pub fn is_within_color_gamut(&self) -> bool {
