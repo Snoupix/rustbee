@@ -121,28 +121,6 @@ impl eframe::App for App {
             let devices = Arc::clone(&self.devices);
             let mut devices_mut = self.tokio_rt.block_on(self.devices.write());
 
-            if ui.button("new connect").clicked() {
-                self.channel = Some(run_promise!(
-                    &self.tokio_rt,
-                    async {
-                        let devices = devices.read().await;
-                        let futures = devices
-                            .iter()
-                            .map(|(_, device)| device.connect_device())
-                            .collect::<Vec<_>>();
-                        futures::future::join_all(futures).await;
-                        true
-                    },
-                    {
-                        let mut lock = devices.write().await;
-                        for (_, device) in lock.iter_mut() {
-                            update_device_state(device).await;
-                        }
-                    }
-                ));
-                return;
-            }
-
             if ui.button("Power OFF all devices").clicked() {
                 self.channel = Some(run_promise!(
                     &self.tokio_rt,
