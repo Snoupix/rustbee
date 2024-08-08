@@ -205,7 +205,7 @@ impl Command {
                 };
 
                 if read {
-                    let (success, data) = hue_bar.get_colors(u8::from(self)).await;
+                    let (success, data) = hue_bar.get_colors(MaskT::from(self)).await;
 
                     if !success {
                         eprintln!(
@@ -259,7 +259,10 @@ impl Command {
                     let scaled_x = (x * 0xFFFF as f64) as u16;
                     let scaled_y = (y * 0xFFFF as f64) as u16;
 
-                    if !hue_bar.set_colors(scaled_x, scaled_y, u8::from(self)).await {
+                    if !hue_bar
+                        .set_colors(scaled_x, scaled_y, MaskT::from(self))
+                        .await
+                    {
                         eprintln!(
                             "Error: daemon failed to disconnect from device {}",
                             hue_bar.addr

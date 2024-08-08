@@ -29,6 +29,7 @@ struct HueDeviceWrapper {
     power_state: bool,
     brightness: u8,
     current_color: [u8; 3],
+    name: String,
     inner: HueDevice<Client>,
 }
 
@@ -41,6 +42,7 @@ impl HueDeviceWrapper {
             power_state: false,
             brightness: 0,
             current_color: [0; 3],
+            name: String::new(),
             inner: HueDevice::new(addr),
         }
     }
@@ -63,6 +65,7 @@ impl From<HueDevice<Client>> for HueDeviceWrapper {
             brightness: 0,
             current_color: [0; 3],
             is_initiated: false,
+            name: String::new(),
             last_update: Instant::now(),
         }
     }
@@ -271,7 +274,11 @@ impl eframe::App for App {
 
             for (addr, device) in devices_mut.iter_mut() {
                 let addr = *addr;
-                ui.label("Device:");
+                if device.name.is_empty() {
+                    ui.label("Device:");
+                } else {
+                    ui.label(format!("Device {}:", device.name));
+                }
                 ui.label(format!("Hex UUID: {:?}", addr));
                 ui.label(format!("Is connected: {}", device.is_connected));
                 if device.is_connected {
@@ -434,12 +441,18 @@ async fn update_device_state(device: &mut HueDeviceWrapper) {
     }
 
     if device.is_connected {
-        let ((succ_color, buf_color), (succ_bright, buf_bright), (succ_power, buf_power)) = tokio::join!(
+        let (
+            (succ_color, buf_color),
+            (succ_bright, buf_bright),
+            (succ_power, buf_power),
+            (succ_name, buf_name),
+        ) = tokio::join!(
             device.get_colors(COLOR_RGB),
             device.get_brightness(),
             device.get_power(),
+            device.get_name()
         );
-        if succ_color && succ_bright && succ_power {
+        if succ_color && succ_bright && succ_power && succ_name {
             let x = u16::from_le_bytes([buf_color[0], buf_color[1]]) as f64 / 0xFFFF as f64;
             let y = u16::from_le_bytes([buf_color[2], buf_color[3]]) as f64 / 0xFFFF as f64;
             let xy = Xy::new(x, y);
@@ -448,6 +461,7 @@ async fn update_device_state(device: &mut HueDeviceWrapper) {
             device.current_color = [rgb.r as _, rgb.g as _, rgb.b as _];
             device.brightness = ((buf_bright[0] as f64 / 255.) * 100.) as _;
             device.power_state = *buf_power.first().unwrap() == 1;
+            device.name = (*String::from_utf8_lossy(&buf_name)).to_owned();
         }
     }
     device.is_initiated = true;

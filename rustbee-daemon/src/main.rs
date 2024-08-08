@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 use std::{collections::HashMap, io::Error};
 
@@ -8,6 +9,7 @@ use interprocess::local_socket::{
 };
 use interprocess::os::unix::local_socket::FilesystemUdSocket;
 use tokio::fs;
+use tokio::sync::Mutex;
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
     signal,
@@ -17,13 +19,14 @@ use tokio::{
 use rustbee_common::bluetooth::*;
 
 use rustbee_common::constants::{
-    flags::CONNECT, MaskT, BUFFER_LEN, FAILURE, OUTPUT_LEN, SET, SOCKET_PATH, SUCCESS,
+    MaskT, BUFFER_LEN, FAILURE, OUTPUT_LEN, SET, SOCKET_PATH, SUCCESS,
 };
 
 const TIMEOUT_SECS: u64 = 60 * 5;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum Command {
+    Connect,
     PairAndTrust,
     Power,
     ColorRgb,
@@ -31,6 +34,7 @@ enum Command {
     ColorXy,
     Brightness,
     Disconnect,
+    Name,
 }
 
 /// converts Result<T, E> into SUCCESS or FAILURE (1 or 0)
@@ -40,7 +44,7 @@ macro_rules! res_to_u8 {
     };
 }
 
-#[tokio::main(flavor = "multi_thread")]
+#[tokio::main]
 async fn main() {
     check_if_path_is_writable().await;
 
@@ -69,7 +73,8 @@ async fn main() {
         }
     };
 
-    let mut devices: HashMap<[u8; 6], HueDevice<Server>> = HashMap::new();
+    let devices: Arc<Mutex<HashMap<[u8; 6], HueDevice<Server>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
 
     loop {
         tokio::select! {
@@ -79,12 +84,16 @@ async fn main() {
                     break;
                 }
 
-                process_conn(timeout.unwrap(), &mut devices).await;
+                let devices = Arc::clone(&devices);
+
+                tokio::spawn(async move {
+                    process_conn(timeout.unwrap(), devices).await;
+                });
             }
         }
     }
 
-    for (_, device) in devices {
+    for (_, device) in devices.lock().await.iter() {
         let _ = device.try_disconnect().await;
     }
     std::fs::remove_file(SOCKET_PATH).unwrap();
@@ -94,10 +103,12 @@ async fn main() {
  * It works as follows:
  * - When setting up a new device, Pair & Trust it, connect and retrieve services to index them by UUID
  * - Respond with [SUCCESS | FAILURE, DATA if any or filled with 0u8]
+ * - Multiple commands can be used at the same time like PAIR | CONNECT | POWER for example but do
+ * not use multiple commands that returns data, the output could be corrupted
  */
 async fn process_conn(
     conn: Result<Stream, Error>,
-    devices: &mut HashMap<[u8; 6], HueDevice<Server>>,
+    devices: Arc<Mutex<HashMap<[u8; 6], HueDevice<Server>>>>,
 ) {
     match conn {
         Ok(mut stream) => {
@@ -110,11 +121,12 @@ async fn process_conn(
             for (i, byte) in buf[..addr.len()].iter().enumerate() {
                 addr[i] = *byte;
             }
-            let flags = buf[6];
-            let set = buf[7] == SET;
-            let data = &buf[8..];
+            let flags = ((buf[7] as u16) << 8) | buf[6] as u16;
+            let set = buf[8] == SET;
+            let data = &buf[9..];
 
             let adapter = get_adapter().await.unwrap();
+            let mut devices = devices.lock().await;
             if devices.get(&addr).is_none() {
                 let device = adapter.device(Address::new(addr)).unwrap();
 
@@ -145,17 +157,24 @@ async fn process_conn(
                 }
             }
 
+            // Since we're not mutating the device internally, only the hashmap, we can clone and
+            // free the lock
+            let hue_device = hue_device.clone();
+            drop(devices);
+
             let mut success = [0; OUTPUT_LEN];
             success[0] = 3;
-            let commands = get_commands_from_flags(flags);
+            let mut commands = get_commands_from_flags(flags);
 
-            if (flags >> (CONNECT - 1)) & 1 == 1 {
+            if commands.contains(&Command::Connect) {
                 let value = res_to_u8!(hue_device.try_connect().await);
                 success[0] = u8::min(success[0], value);
+                commands.retain(|cmd| *cmd != Command::Connect);
             }
 
             for command in commands {
                 let value = match command {
+                    Command::Connect => continue,
                     Command::PairAndTrust => res_to_u8!(hue_device.try_pair().await),
                     Command::Disconnect => res_to_u8!(hue_device.try_disconnect().await),
                     Command::Power { .. } => {
@@ -195,6 +214,25 @@ async fn process_conn(
                         } else {
                             FAILURE
                         }
+                    }
+                    Command::Name => {
+                        let res = hue_device.get_name().await;
+
+                        if let Ok(ref opt) = res {
+                            if let Some(name_str) = opt.as_ref() {
+                                let len = name_str.len();
+                                for (i, byte) in name_str.bytes().take(OUTPUT_LEN - 1).enumerate() {
+                                    success[i + 1] = byte;
+                                }
+                                if len > (OUTPUT_LEN - 1) {
+                                    success[OUTPUT_LEN - 3] = b'.';
+                                    success[OUTPUT_LEN - 2] = b'.';
+                                    success[OUTPUT_LEN - 1] = b'.';
+                                }
+                            }
+                        }
+
+                        res_to_u8!(res)
                     }
                 };
                 success[0] = u8::min(success[0], value);
@@ -249,6 +287,9 @@ fn get_commands_from_flags(flags: MaskT) -> Vec<Command> {
 
     let mut v = Vec::new();
 
+    if (flags >> (CONNECT - 1)) & 1 == 1 {
+        v.push(Command::Connect);
+    }
     if (flags >> (PAIR - 1)) & 1 == 1 {
         v.push(Command::PairAndTrust);
     }
@@ -269,6 +310,9 @@ fn get_commands_from_flags(flags: MaskT) -> Vec<Command> {
     }
     if (flags >> (DISCONNECT - 1)) & 1 == 1 {
         v.push(Command::Disconnect)
+    }
+    if (flags >> (NAME - 1)) & 1 == 1 {
+        v.push(Command::Name)
     }
 
     v

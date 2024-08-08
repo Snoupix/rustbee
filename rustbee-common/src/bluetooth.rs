@@ -375,6 +375,10 @@ where
 
         Ok(())
     }
+
+    pub async fn get_name(&self) -> bluer::Result<Option<String>> {
+        self.name().await
+    }
 }
 
 type CmdOutput = (bool, [u8; OUTPUT_LEN - 1]);
@@ -419,7 +423,7 @@ where
         self.send_packet_to_daemon(CONNECT | BRIGHTNESS, buf).await
     }
 
-    pub async fn get_colors(&self, color_mask: u8) -> CmdOutput {
+    pub async fn get_colors(&self, color_mask: MaskT) -> CmdOutput {
         assert!([COLOR_XY, COLOR_RGB, COLOR_HEX].contains(&color_mask));
 
         let mut buf = [0u8; DATA_LEN];
@@ -428,7 +432,7 @@ where
         self.send_packet_to_daemon(CONNECT | color_mask, buf).await
     }
 
-    pub async fn set_colors(&self, scaled_x: u16, scaled_y: u16, color_mask: u8) -> bool {
+    pub async fn set_colors(&self, scaled_x: u16, scaled_y: u16, color_mask: MaskT) -> bool {
         assert!([COLOR_XY, COLOR_RGB, COLOR_HEX].contains(&color_mask));
 
         let mut buf = [0u8; DATA_LEN];
@@ -441,6 +445,13 @@ where
         self.send_packet_to_daemon(CONNECT | color_mask, buf)
             .await
             .0
+    }
+
+    pub async fn get_name(&self) -> CmdOutput {
+        let mut buf = [0u8; DATA_LEN];
+        buf[0] = GET;
+
+        self.send_packet_to_daemon(NAME, buf).await
     }
 
     pub async fn disconnect_device(&self) -> bool {
@@ -475,9 +486,10 @@ where
         for (i, byte) in self.addr.0.iter().enumerate() {
             chunks[i] = *byte;
         }
-        chunks[DATA_LEN] = flags;
+        chunks[DATA_LEN] = (flags & 0xff) as _;
+        chunks[DATA_LEN + 1] = (flags >> 8) as _;
         for (i, byte) in data.iter().enumerate() {
-            chunks[i + DATA_LEN + 1] = *byte;
+            chunks[i + DATA_LEN + 2] = *byte;
         }
 
         stream.write_all(&chunks[..]).await.unwrap();
