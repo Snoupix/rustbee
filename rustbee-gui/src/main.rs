@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::ops::Deref;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use eframe::egui::{self, color_picker, CentralPanel};
+use eframe::egui::{self, color_picker, CentralPanel, TopBottomPanel};
 use eframe::{CreationContext, NativeOptions};
 use tokio::runtime::{self, Runtime};
 use tokio::sync::{
@@ -16,7 +17,9 @@ use rustbee_common::bluetooth::{get_devices, Client, HueDevice};
 use rustbee_common::color_space::Rgb;
 use rustbee_common::colors::Xy;
 use rustbee_common::constants::{flags::COLOR_RGB, HUE_BAR_1_ADDR, HUE_BAR_2_ADDR};
+use rustbee_common::BluetoothAddr;
 
+#[derive(Clone)]
 struct HueDeviceWrapper {
     // Since most of the time, fields are already initiated, using Option<T> would just make everything
     // more verbose
@@ -27,6 +30,20 @@ struct HueDeviceWrapper {
     brightness: u8,
     current_color: [u8; 3],
     inner: HueDevice<Client>,
+}
+
+impl HueDeviceWrapper {
+    fn from_address(addr: BluetoothAddr) -> Self {
+        Self {
+            is_initiated: false,
+            last_update: Instant::now(),
+            is_connected: false,
+            power_state: false,
+            brightness: 0,
+            current_color: [0; 3],
+            inner: HueDevice::new(addr),
+        }
+    }
 }
 
 impl Deref for HueDeviceWrapper {
@@ -54,8 +71,10 @@ impl From<HueDevice<Client>> for HueDeviceWrapper {
 type AppDevices = HashMap<[u8; 6], HueDeviceWrapper>;
 
 struct App {
-    tokio_rt: Runtime,
     devices: Arc<RwLock<AppDevices>>,
+    tokio_rt: Runtime,
+    new_device_addr: String,
+    is_new_device_addr_error: bool,
     channel: Option<Receiver<bool>>,
 }
 
@@ -72,22 +91,19 @@ impl App {
         Box::new(Self {
             devices,
             tokio_rt,
+            new_device_addr: String::new(),
+            is_new_device_addr_error: false,
             channel: None,
         })
     }
 }
 
-macro_rules! run_promise {
-    ($rt:expr, $f:expr, $bloc:expr) => {{
+macro_rules! run_async {
+    ($rt:expr, $f:expr) => {{
         let (tx, rx) = channel(false);
 
         $rt.spawn(async move {
-            let res = $f.await;
-            tx.send(res).unwrap();
-
-            if res {
-                $bloc
-            }
+            tx.send($f.await).unwrap();
         });
 
         rx
@@ -96,6 +112,55 @@ macro_rules! run_promise {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let devices = Arc::clone(&self.devices);
+
+        TopBottomPanel::top("banner")
+            .show_separator_line(true)
+            .show(ctx, |ui| {
+                ui.vertical_centered_justified(|ui| {
+                    if !self.new_device_addr.is_empty() && self.is_new_device_addr_error {
+                        ui.horizontal(|ui| {
+                                    ui.label("Error on parsing Address, please respect the following format: ff:aa:55:ff:aa:55");
+                        });
+                    }
+
+                    ui.horizontal(|ui| {
+                        ui.label("Add a Philips Hue device by uuid");
+                        let input = ui.text_edit_singleline(&mut self.new_device_addr);
+                        if input.has_focus() {
+                            input.show_tooltip_ui(|ui| {
+                                ui.label(
+                                    "Enter the Hexadecimal UUID and press enter or click elsewhere",
+                                );
+                            });
+                        }
+                        if input.lost_focus() {
+                            match parse_address(&self.new_device_addr) {
+                                Ok(addr) => {
+                                    let devices = Arc::clone(&devices);
+
+                                    self.tokio_rt.spawn(async move {
+                                        let mut devices = devices.write().await;
+                                        devices.insert(*addr, HueDeviceWrapper::from_address(addr));
+                                    });
+
+                                    self.is_new_device_addr_error = false;
+                                },
+                                Err(_) => {
+                                    self.is_new_device_addr_error = true;
+                                },
+                            }
+                        }
+                    });
+
+                    // TODO: Maybe ? if devices are actually visible to public via bluetooth
+                    // discovery
+                    // ui.horizontal(|ui| {
+                    //     if ui.button("Add a Philips Hue device by discovery").clicked() {}
+                    // });
+                });
+            });
+
         CentralPanel::default().show(ctx, |ui| {
             if let Some(ref mut rx) = self.channel {
                 match rx.has_changed() {
@@ -118,94 +183,89 @@ impl eframe::App for App {
                 }
             }
 
-            let devices = Arc::clone(&self.devices);
             let mut devices_mut = self.tokio_rt.block_on(self.devices.write());
 
+            if devices_mut.is_empty() {
+                return;
+            }
+
             if ui.button("Power OFF all devices").clicked() {
-                self.channel = Some(run_promise!(
-                    &self.tokio_rt,
-                    async {
-                        let devices = devices.read().await;
-                        let futures = devices
-                            .iter()
-                            .map(|(_, device)| device.set_power(false))
-                            .collect::<Vec<_>>();
-                        futures::future::join_all(futures).await;
-                        true
-                    },
-                    {
-                        let mut lock = devices.write().await;
-                        lock.iter_mut().for_each(|(_, device)| {
-                            device.power_state = false;
-                        });
-                    }
-                ));
+                self.channel = Some(run_async!(&self.tokio_rt, async {
+                    let devices_read = devices.read().await;
+                    let futures = devices_read
+                        .iter()
+                        .map(|(_, device)| device.set_power(false))
+                        .collect::<Vec<_>>();
+                    let res = futures::future::join_all(futures).await;
+                    drop(devices_read);
+
+                    let mut lock = devices.write().await;
+                    lock.iter_mut().for_each(|(_, device)| {
+                        device.power_state = false;
+                    });
+
+                    !res.into_iter().fold(true, |acc, v| !acc || !v)
+                }));
                 return;
             }
 
             if ui.button("Power ON all devices").clicked() {
-                self.channel = Some(run_promise!(
-                    &self.tokio_rt,
-                    async {
-                        let devices = devices.read().await;
-                        let futures = devices
-                            .iter()
-                            .map(|(_, device)| device.set_power(true))
-                            .collect::<Vec<_>>();
-                        futures::future::join_all(futures).await;
-                        true
-                    },
-                    {
-                        let mut lock = devices.write().await;
-                        lock.iter_mut().for_each(|(_, device)| {
-                            device.power_state = true;
-                        });
-                    }
-                ));
+                self.channel = Some(run_async!(&self.tokio_rt, async {
+                    let devices_read = devices.read().await;
+                    let futures = devices_read
+                        .iter()
+                        .map(|(_, device)| device.set_power(true))
+                        .collect::<Vec<_>>();
+                    let res = futures::future::join_all(futures).await;
+                    drop(devices_read);
+
+                    let mut lock = devices.write().await;
+                    lock.iter_mut().for_each(|(_, device)| {
+                        device.power_state = true;
+                    });
+
+                    !res.into_iter().fold(true, |acc, v| !acc || !v)
+                }));
                 return;
             }
 
             if ui.button("Disconnect from all devices").clicked() {
-                self.channel = Some(run_promise!(
-                    &self.tokio_rt,
-                    async {
-                        let devices = devices.read().await;
-                        let futures = devices
-                            .iter()
-                            .map(|(_, device)| device.disconnect_device())
-                            .collect::<Vec<_>>();
-                        futures::future::join_all(futures).await;
-                        true
-                    },
-                    {
-                        let mut lock = devices.write().await;
-                        for (_, device) in lock.iter_mut() {
-                            update_device_state(device).await;
-                        }
+                self.channel = Some(run_async!(&self.tokio_rt, async {
+                    let devices_read = devices.read().await;
+                    let futures = devices_read
+                        .iter()
+                        .map(|(_, device)| device.disconnect_device())
+                        .collect::<Vec<_>>();
+                    let res = futures::future::join_all(futures).await;
+                    drop(devices_read);
+
+                    let mut lock = devices.write().await;
+                    for (_, device) in lock.iter_mut() {
+                        update_device_state(device).await;
                     }
-                ));
+
+                    !res.into_iter().fold(true, |acc, v| !acc || !v)
+                }));
                 return;
             }
 
             if ui.button("Connect to all devices").clicked() {
-                self.channel = Some(run_promise!(
-                    &self.tokio_rt,
-                    async {
-                        let devices = devices.read().await;
-                        let futures = devices
-                            .iter()
-                            .map(|(_, device)| device.connect_device())
-                            .collect::<Vec<_>>();
-                        futures::future::join_all(futures).await;
-                        true
-                    },
-                    {
-                        let mut lock = devices.write().await;
-                        for (_, device) in lock.iter_mut() {
-                            update_device_state(device).await;
-                        }
+                self.channel = Some(run_async!(&self.tokio_rt, async {
+                    let devices_read = devices.read().await;
+                    let futures = devices_read
+                        .iter()
+                        .map(|(_, device)| device.connect_device())
+                        .collect::<Vec<_>>();
+                    let res = futures::future::join_all(futures).await;
+                    drop(devices_read);
+
+                    let mut lock = devices.write().await;
+                    for (_, device) in lock.iter_mut() {
+                        update_device_state(device).await;
                     }
-                ));
+
+                    !res.into_iter().fold(true, |acc, v| !acc || !v)
+                }));
                 return;
             }
 
@@ -231,10 +291,9 @@ impl eframe::App for App {
                             brightness: _,
                         } = Xy::from(Rgb::new(r as _, g as _, b as _));
                         let device = device.clone();
-                        self.channel = Some(run_promise!(
+                        self.channel = Some(run_async!(
                             &self.tokio_rt,
-                            device.set_colors(x as _, y as _, COLOR_RGB),
-                            {}
+                            device.set_colors(x as _, y as _, COLOR_RGB)
                         ));
                     }
                     ui.label(format!("Current color is {:?}", device.current_color));
@@ -243,45 +302,67 @@ impl eframe::App for App {
                         if ui.button("Power OFF").clicked() {
                             let device = device.clone();
 
-                            self.channel =
-                                Some(run_promise!(&self.tokio_rt, device.set_power(false), {
+                            self.channel = Some(run_async!(&self.tokio_rt, async move {
+                                let res = device.set_power(false).await;
+                                if res {
                                     let mut lock = devices.write().await;
                                     let device = lock.get_mut(&addr).unwrap();
                                     device.power_state = false;
-                                }));
+                                }
+                                res
+                            }));
                             return;
                         }
                     } else if ui.button("Power ON").clicked() {
                         let device = device.clone();
 
-                        self.channel =
-                            Some(run_promise!(&self.tokio_rt, device.set_power(true), {
+                        self.channel = Some(run_async!(&self.tokio_rt, async move {
+                            let res = device.set_power(true).await;
+                            if res {
                                 let mut lock = devices.write().await;
                                 let device = lock.get_mut(&addr).unwrap();
                                 device.power_state = true;
-                            }));
+                            }
+                            res
+                        }));
                         return;
                     }
 
                     if ui.button("Disconnect from device").clicked() {
                         let device = device.clone();
 
-                        self.channel =
-                            Some(run_promise!(&self.tokio_rt, device.disconnect_device(), {
+                        self.channel = Some(run_async!(&self.tokio_rt, async move {
+                            let res = device.disconnect_device().await;
+                            if res {
                                 let mut lock = devices.write().await;
                                 let device = lock.get_mut(&addr).unwrap();
                                 update_device_state(device).await;
-                            }));
+                            }
+                            res
+                        }));
                         return;
                     }
                 } else if ui.button("Connect to device").clicked() {
                     let device = device.clone();
 
-                    self.channel = Some(run_promise!(&self.tokio_rt, device.connect_device(), {
-                        let mut lock = devices.write().await;
-                        let device = lock.get_mut(&addr).unwrap();
-                        update_device_state(device).await;
+                    self.channel = Some(run_async!(&self.tokio_rt, async move {
+                        let res = device.connect_device().await;
+                        if res {
+                            let mut lock = devices.write().await;
+                            let device = lock.get_mut(&addr).unwrap();
+                            update_device_state(device).await;
+                        }
+                        res
                     }));
+                    return;
+                }
+
+                if ui.button("Remove device").clicked() {
+                    let devices = Arc::clone(&devices);
+
+                    self.tokio_rt.spawn(async move {
+                        devices.write().await.remove(&addr);
+                    });
                     return;
                 }
             }
@@ -341,6 +422,10 @@ fn main() -> eframe::Result {
     )?;
 
     Ok(())
+}
+
+fn parse_address(str: &str) -> Result<BluetoothAddr, String> {
+    BluetoothAddr::from_str(str).map_err(|e| e.0)
 }
 
 async fn update_device_state(device: &mut HueDeviceWrapper) {
