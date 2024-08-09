@@ -69,7 +69,7 @@ build_gui() {
 case $1 in
     "shutdown")
         pid=$(pgrep rustbee-daemon)
-        kill -s INT $pid > /dev/null 2>&1
+        sudo kill -s INT $pid > /dev/null 2>&1
         if [[ $? != 0 ]]; then
             sudo pkill rustbee-daemon
             sudo rm -f $socket_path
