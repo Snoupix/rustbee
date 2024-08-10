@@ -62,7 +62,7 @@ impl From<&Command> for MaskT {
 
 impl Command {
     pub async fn handle(&self, hue_bar: HueDevice<Client>) -> bluer::Result<()> {
-        if !hue_bar.pair().await {
+        if !hue_bar.pair().await.is_success() {
             eprintln!("Error: failed to pair and trust device {}", hue_bar.addr);
             return Ok(());
         }
@@ -71,7 +71,11 @@ impl Command {
             Self::PairAndTrust => (),
             Self::Power { state } => match state {
                 Some(state) => {
-                    if !hue_bar.set_power(matches!(*state, State::On)).await {
+                    if !hue_bar
+                        .set_power(matches!(*state, State::On))
+                        .await
+                        .is_success()
+                    {
                         eprintln!(
                             "[ERROR] Failed to write power state to hue bar address: {}",
                             hue_bar.addr
@@ -79,7 +83,8 @@ impl Command {
                     }
                 }
                 None => {
-                    let (success, state) = hue_bar.get_power().await;
+                    let (res, state) = hue_bar.get_power().await;
+                    let success = res.is_success();
 
                     if !success {
                         eprintln!(
@@ -109,7 +114,7 @@ impl Command {
                         "[ERROR] Brightness value must be between 0 and 100 inclusive"
                     );
 
-                    if !hue_bar.set_brightness(*value).await {
+                    if !hue_bar.set_brightness(*value).await.is_success() {
                         eprintln!(
                             "[ERROR] Failed to write brightness state to hue bar address: {}",
                             hue_bar.addr
@@ -117,7 +122,8 @@ impl Command {
                     }
                 }
                 None => {
-                    let (success, brightness) = hue_bar.get_brightness().await;
+                    let (res, brightness) = hue_bar.get_brightness().await;
+                    let success = res.is_success();
 
                     if !success {
                         eprintln!(
@@ -205,7 +211,8 @@ impl Command {
                 };
 
                 if read {
-                    let (success, data) = hue_bar.get_colors(MaskT::from(self)).await;
+                    let (res, data) = hue_bar.get_colors(MaskT::from(self)).await;
+                    let success = res.is_success();
 
                     if !success {
                         eprintln!(
@@ -221,7 +228,8 @@ impl Command {
                         // TODO: Fix colors display / color processing
                         match self {
                             Self::ColorRgb { .. } => {
-                                let (success, brightness) = hue_bar.get_brightness().await;
+                                let (res, brightness) = hue_bar.get_brightness().await;
+                                let success = res.is_success();
 
                                 if !success {
                                     eprintln!(
@@ -262,6 +270,7 @@ impl Command {
                     if !hue_bar
                         .set_colors(scaled_x, scaled_y, MaskT::from(self))
                         .await
+                        .is_success()
                     {
                         eprintln!(
                             "Error: daemon failed to disconnect from device {}",
@@ -271,7 +280,7 @@ impl Command {
                 }
             }
             Self::Disconnect => {
-                if !hue_bar.disconnect_device().await {
+                if !hue_bar.disconnect_device().await.is_success() {
                     eprintln!(
                         "Error: daemon failed to disconnect from device {}",
                         hue_bar.addr

@@ -381,17 +381,17 @@ where
     }
 }
 
-type CmdOutput = (bool, [u8; OUTPUT_LEN - 1]);
+type CmdOutput = (OutputCode, [u8; OUTPUT_LEN - 1]);
 
 impl HueDevice<Client>
 where
     HueDevice<Client>: Default + Deref<Target = Device> + std::fmt::Debug,
 {
-    pub async fn pair(&self) -> bool {
+    pub async fn pair(&self) -> OutputCode {
         self.send_packet_to_daemon(PAIR, [0; 6]).await.0
     }
 
-    pub async fn set_power(&self, state: bool) -> bool {
+    pub async fn set_power(&self, state: bool) -> OutputCode {
         let mut buf = [0u8; DATA_LEN];
         buf[0] = SET;
         buf[1] = state as _;
@@ -406,7 +406,7 @@ where
         self.send_packet_to_daemon(CONNECT | POWER, buf).await
     }
 
-    pub async fn set_brightness(&self, value: u8) -> bool {
+    pub async fn set_brightness(&self, value: u8) -> OutputCode {
         let mut buf = [0u8; DATA_LEN];
         buf[0] = SET;
         buf[1] = (((value as f32) / 100.) * 0xff as f32) as _;
@@ -432,7 +432,7 @@ where
         self.send_packet_to_daemon(CONNECT | color_mask, buf).await
     }
 
-    pub async fn set_colors(&self, scaled_x: u16, scaled_y: u16, color_mask: MaskT) -> bool {
+    pub async fn set_colors(&self, scaled_x: u16, scaled_y: u16, color_mask: MaskT) -> OutputCode {
         assert!([COLOR_XY, COLOR_RGB, COLOR_HEX].contains(&color_mask));
 
         let mut buf = [0u8; DATA_LEN];
@@ -454,14 +454,14 @@ where
         self.send_packet_to_daemon(NAME, buf).await
     }
 
-    pub async fn disconnect_device(&self) -> bool {
+    pub async fn disconnect_device(&self) -> OutputCode {
         let mut buf = [0u8; DATA_LEN];
         buf[0] = GET;
 
         self.send_packet_to_daemon(DISCONNECT, buf).await.0
     }
 
-    pub async fn connect_device(&self) -> bool {
+    pub async fn connect_device(&self) -> OutputCode {
         let mut buf = [0u8; DATA_LEN];
         buf[0] = GET;
 
@@ -497,16 +497,55 @@ where
 
         let mut buf = [0; OUTPUT_LEN];
         if let Err(error) = stream.read_exact(&mut buf).await {
-            eprintln!("Error cannot read daemon output, please check /var/log/rustbee-daemon.log file ({error})");
-            return (false, output);
+            eprintln!("Error cannot read daemon output, please check /var/log/rustbee-daemon.log file ({error}) buffer: {buf:?}");
+            return (OutputCode::Failure, output);
         }
 
         for (i, byte) in buf[1..].iter().enumerate() {
             output[i] = *byte;
         }
 
-        (buf[0] & SUCCESS == 1, output)
+        (OutputCode::from(buf[0]), output)
     }
+}
+
+pub async fn get_device<T>(address: [u8; 6]) -> bluer::Result<Option<HueDevice<T>>>
+where
+    T: std::fmt::Debug,
+    HueDevice<T>: Default,
+{
+    let session = Session::new().await?;
+    let adapter = session.default_adapter().await?;
+
+    if !adapter.is_powered().await? {
+        adapter.set_powered(true).await?;
+    }
+
+    let mut discovery = adapter.discover_devices().await?;
+    let mut pinned_disco = unsafe { Pin::new_unchecked(&mut discovery) };
+    let mut device: Option<HueDevice<T>> = None;
+
+    while let Some(event) = pinned_disco.next().await {
+        if let AdapterEvent::DeviceAdded(addr) = event {
+            let addr_slice = *addr;
+            if address != addr_slice {
+                continue;
+            }
+            let ble_device = adapter.device(addr)?;
+
+            // Device known but not in range
+            if ble_device.rssi().await?.is_none() {
+                return Ok(device);
+            }
+
+            let mut hue_device = HueDevice::new(addr);
+            hue_device.set_device(ble_device);
+            device = Some(hue_device);
+            break;
+        }
+    }
+
+    Ok(device)
 }
 
 pub async fn get_devices<T>(addrs: &[[u8; 6]]) -> bluer::Result<Vec<HueDevice<T>>>
@@ -532,14 +571,19 @@ where
     while let Some(event) = pinned_disco.next().await {
         match event {
             AdapterEvent::DeviceAdded(addr) => {
-                let addr_vec = addr.to_vec();
-                let addr_slice = addr_vec.as_slice();
-                if !addresses.contains_key(addr_slice) {
+                let addr_slice = *addr;
+                if !addresses.contains_key(&addr_slice) {
                     continue;
                 }
+                let ble_device = adapter.device(addr)?;
 
-                let hue_bar = addresses.get_mut(addr_slice).unwrap(); // Shouldn't panic
-                hue_bar.set_device(adapter.device(addr)?);
+                // Device known but not in range
+                if ble_device.rssi().await?.is_none() {
+                    // TODO: Handle me
+                }
+
+                let hue_device = addresses.get_mut(&addr_slice).unwrap(); // Shouldn't panic
+                hue_device.set_device(ble_device);
 
                 if !addresses.iter().any(|(_, v)| v.device.is_none()) {
                     // Not any None variant
@@ -548,14 +592,13 @@ where
                 }
             }
             AdapterEvent::DeviceRemoved(addr) => {
-                let addr_vec = addr.to_vec();
-                let addr_slice = addr_vec.as_slice();
-                if !addresses.contains_key(addr_slice) {
+                let addr_slice = *addr;
+                if !addresses.contains_key(&addr_slice) {
                     continue;
                 }
 
-                let hue_bar = addresses.get_mut(addr_slice).unwrap(); // Shouldn't panic
-                hue_bar.unset_device();
+                let hue_device = addresses.get_mut(&addr_slice).unwrap(); // Shouldn't panic
+                hue_device.unset_device();
             }
             _ => (),
         }

@@ -16,7 +16,7 @@ use tokio::time::{self, Instant};
 use rustbee_common::bluetooth::{get_devices, Client, HueDevice};
 use rustbee_common::color_space::Rgb;
 use rustbee_common::colors::Xy;
-use rustbee_common::constants::{flags::COLOR_RGB, HUE_BAR_1_ADDR, HUE_BAR_2_ADDR};
+use rustbee_common::constants::{flags::COLOR_RGB, OutputCode, HUE_BAR_1_ADDR, HUE_BAR_2_ADDR};
 use rustbee_common::BluetoothAddr;
 
 #[derive(Clone)]
@@ -24,6 +24,8 @@ struct HueDeviceWrapper {
     // Since most of the time, fields are already initiated, using Option<T> would just make everything
     // more verbose
     is_initiated: bool,
+    is_paired: bool,
+    is_found: bool,
     last_update: Instant,
     is_connected: bool,
     power_state: bool,
@@ -33,17 +35,29 @@ struct HueDeviceWrapper {
     inner: HueDevice<Client>,
 }
 
+impl Default for HueDeviceWrapper {
+    /// Do not use default when there's no inner HueDevice defined
+    fn default() -> Self {
+        Self {
+            last_update: Instant::now(),
+            power_state: Default::default(),
+            brightness: Default::default(),
+            current_color: Default::default(),
+            name: Default::default(),
+            is_found: false,
+            is_connected: false,
+            is_paired: false,
+            is_initiated: false,
+            inner: Default::default(),
+        }
+    }
+}
+
 impl HueDeviceWrapper {
     fn from_address(addr: BluetoothAddr) -> Self {
         Self {
-            is_initiated: false,
-            last_update: Instant::now(),
-            is_connected: false,
-            power_state: false,
-            brightness: 0,
-            current_color: [0; 3],
-            name: String::new(),
             inner: HueDevice::new(addr),
+            ..Default::default()
         }
     }
 }
@@ -60,13 +74,7 @@ impl From<HueDevice<Client>> for HueDeviceWrapper {
     fn from(inner: HueDevice<Client>) -> Self {
         Self {
             inner,
-            is_connected: false,
-            power_state: false,
-            brightness: 0,
-            current_color: [0; 3],
-            is_initiated: false,
-            name: String::new(),
-            last_update: Instant::now(),
+            ..Default::default()
         }
     }
 }
@@ -76,6 +84,7 @@ type AppDevices = HashMap<[u8; 6], HueDeviceWrapper>;
 struct App {
     devices: Arc<RwLock<AppDevices>>,
     tokio_rt: Runtime,
+    device_error: Option<String>,
     new_device_addr: String,
     is_new_device_addr_error: bool,
     channel: Option<Receiver<bool>>,
@@ -94,6 +103,7 @@ impl App {
         Box::new(Self {
             devices,
             tokio_rt,
+            device_error: None,
             new_device_addr: String::new(),
             is_new_device_addr_error: false,
             channel: None,
@@ -144,7 +154,22 @@ impl eframe::App for App {
 
                                     self.tokio_rt.spawn(async move {
                                         let mut devices = devices.write().await;
-                                        devices.insert(*addr, HueDeviceWrapper::from_address(addr));
+                                        let mut device = HueDeviceWrapper::from_address(addr);
+                                        match device.pair().await {
+                                            OutputCode::Success => {
+                                                device.is_paired = true;
+                                                device.is_found = true;
+                                            },
+                                            OutputCode::Failure => {
+                                                device.is_paired = false;
+                                                device.is_found = true;
+                                            },
+                                            OutputCode::DeviceNotFound => {
+                                                device.is_paired = false;
+                                                device.is_found = false;
+                                            },
+                                        }
+                                        devices.insert(*addr, device);
                                     });
 
                                     self.is_new_device_addr_error = false;
@@ -165,6 +190,14 @@ impl eframe::App for App {
             });
 
         CentralPanel::default().show(ctx, |ui| {
+            if let Some(ref error) = self.device_error {
+                if !error.is_empty() {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("Error {error}"));
+                    });
+                }
+            }
+
             if let Some(ref mut rx) = self.channel {
                 match rx.has_changed() {
                     Ok(changed) => {
@@ -207,7 +240,7 @@ impl eframe::App for App {
                         device.power_state = false;
                     });
 
-                    !res.into_iter().fold(true, |acc, v| !acc || !v)
+                    !res.into_iter().fold(true, |acc, v| !acc || !v.is_success())
                 }));
                 return;
             }
@@ -227,7 +260,7 @@ impl eframe::App for App {
                         device.power_state = true;
                     });
 
-                    !res.into_iter().fold(true, |acc, v| !acc || !v)
+                    !res.into_iter().fold(true, |acc, v| !acc || !v.is_success())
                 }));
                 return;
             }
@@ -247,7 +280,7 @@ impl eframe::App for App {
                         update_device_state(device).await;
                     }
 
-                    !res.into_iter().fold(true, |acc, v| !acc || !v)
+                    !res.into_iter().fold(true, |acc, v| !acc || !v.is_success())
                 }));
                 return;
             }
@@ -267,7 +300,7 @@ impl eframe::App for App {
                         update_device_state(device).await;
                     }
 
-                    !res.into_iter().fold(true, |acc, v| !acc || !v)
+                    !res.into_iter().fold(true, |acc, v| !acc || !v.is_success())
                 }));
                 return;
             }
@@ -280,6 +313,13 @@ impl eframe::App for App {
                     ui.label(format!("Device {}:", device.name));
                 }
                 ui.label(format!("Hex UUID: {:?}", addr));
+
+                if !device.is_found {
+                    ui.label("Device not found");
+                    continue;
+                }
+
+                ui.label(format!("Is paired: {}", device.is_paired));
                 ui.label(format!("Is connected: {}", device.is_connected));
                 if device.is_connected {
                     ui.label(format!("Brightness: {}%", device.brightness));
@@ -298,10 +338,12 @@ impl eframe::App for App {
                             brightness: _,
                         } = Xy::from(Rgb::new(r as _, g as _, b as _));
                         let device = device.clone();
-                        self.channel = Some(run_async!(
-                            &self.tokio_rt,
-                            device.set_colors(x as _, y as _, COLOR_RGB)
-                        ));
+                        self.channel = Some(run_async!(&self.tokio_rt, async move {
+                            device
+                                .set_colors(x as _, y as _, COLOR_RGB)
+                                .await
+                                .is_success()
+                        }));
                     }
                     ui.label(format!("Current color is {:?}", device.current_color));
 
@@ -310,7 +352,7 @@ impl eframe::App for App {
                             let device = device.clone();
 
                             self.channel = Some(run_async!(&self.tokio_rt, async move {
-                                let res = device.set_power(false).await;
+                                let res = device.set_power(false).await.is_success();
                                 if res {
                                     let mut lock = devices.write().await;
                                     let device = lock.get_mut(&addr).unwrap();
@@ -324,7 +366,7 @@ impl eframe::App for App {
                         let device = device.clone();
 
                         self.channel = Some(run_async!(&self.tokio_rt, async move {
-                            let res = device.set_power(true).await;
+                            let res = device.set_power(true).await.is_success();
                             if res {
                                 let mut lock = devices.write().await;
                                 let device = lock.get_mut(&addr).unwrap();
@@ -339,7 +381,7 @@ impl eframe::App for App {
                         let device = device.clone();
 
                         self.channel = Some(run_async!(&self.tokio_rt, async move {
-                            let res = device.disconnect_device().await;
+                            let res = device.disconnect_device().await.is_success();
                             if res {
                                 let mut lock = devices.write().await;
                                 let device = lock.get_mut(&addr).unwrap();
@@ -353,7 +395,7 @@ impl eframe::App for App {
                     let device = device.clone();
 
                     self.channel = Some(run_async!(&self.tokio_rt, async move {
-                        let res = device.connect_device().await;
+                        let res = device.connect_device().await.is_success();
                         if res {
                             let mut lock = devices.write().await;
                             let device = lock.get_mut(&addr).unwrap();
@@ -442,17 +484,30 @@ async fn update_device_state(device: &mut HueDeviceWrapper) {
 
     if device.is_connected {
         let (
-            (succ_color, buf_color),
-            (succ_bright, buf_bright),
-            (succ_power, buf_power),
-            (succ_name, buf_name),
+            (res_color, buf_color),
+            (res_bright, buf_bright),
+            (res_power, buf_power),
+            (res_name, buf_name),
         ) = tokio::join!(
             device.get_colors(COLOR_RGB),
             device.get_brightness(),
             device.get_power(),
             device.get_name()
         );
-        if succ_color && succ_bright && succ_power && succ_name {
+
+        if matches!(res_color, OutputCode::DeviceNotFound)
+            || matches!(res_bright, OutputCode::DeviceNotFound)
+            || matches!(res_power, OutputCode::DeviceNotFound)
+            || matches!(res_name, OutputCode::DeviceNotFound)
+        {
+            device.is_found = false;
+            return;
+        }
+        if res_color.is_success()
+            && res_bright.is_success()
+            && res_power.is_success()
+            && res_name.is_success()
+        {
             let x = u16::from_le_bytes([buf_color[0], buf_color[1]]) as f64 / 0xFFFF as f64;
             let y = u16::from_le_bytes([buf_color[2], buf_color[3]]) as f64 / 0xFFFF as f64;
             let xy = Xy::new(x, y);
@@ -462,6 +517,8 @@ async fn update_device_state(device: &mut HueDeviceWrapper) {
             device.brightness = ((buf_bright[0] as f64 / 255.) * 100.) as _;
             device.power_state = *buf_power.first().unwrap() == 1;
             device.name = (*String::from_utf8_lossy(&buf_name)).to_owned();
+            device.is_paired = true;
+            device.is_found = true;
         }
     }
     device.is_initiated = true;

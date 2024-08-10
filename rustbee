@@ -70,7 +70,7 @@ case $1 in
     "shutdown")
         pid=$(pgrep rustbee-daemon)
         sudo kill -s INT $pid > /dev/null 2>&1
-        if [[ $? != 0 ]]; then
+        if [[ $? != 0 || $2 == "-f" || $2 == "--force" ]]; then
             sudo pkill rustbee-daemon
             sudo rm -f $socket_path
         fi

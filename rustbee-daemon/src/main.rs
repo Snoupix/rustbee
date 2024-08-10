@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{collections::HashMap, io::Error};
 
-use bluer::{Adapter, Address, Session};
 use interprocess::local_socket::{
     tokio::Stream, traits::tokio::Listener as _, ListenerNonblockingMode, ListenerOptions, ToFsName,
 };
@@ -18,11 +17,10 @@ use tokio::{
 
 use rustbee_common::bluetooth::*;
 
-use rustbee_common::constants::{
-    MaskT, BUFFER_LEN, FAILURE, OUTPUT_LEN, SET, SOCKET_PATH, SUCCESS,
-};
+use rustbee_common::constants::{MaskT, OutputCode, BUFFER_LEN, OUTPUT_LEN, SET, SOCKET_PATH};
 
 const TIMEOUT_SECS: u64 = 60 * 5;
+const FOUND_DEVICE_TIMEOUT_SECS: u64 = 30;
 
 #[derive(Debug, PartialEq)]
 enum Command {
@@ -37,10 +35,10 @@ enum Command {
     Name,
 }
 
-/// converts Result<T, E> into SUCCESS or FAILURE (1 or 0)
+/// converts Result<T, E> into SUCCESS or FAILURE (0 or 1)
 macro_rules! res_to_u8 {
     ($r:expr) => {
-        $r.map_or_else(|_| FAILURE, |_| SUCCESS)
+        u8::from($r.map_or_else(|_| OutputCode::Failure, |_| OutputCode::Success))
     };
 }
 
@@ -125,12 +123,44 @@ async fn process_conn(
             let set = buf[8] == SET;
             let data = &buf[9..];
 
-            let adapter = get_adapter().await.unwrap();
+            let mut success = [0; OUTPUT_LEN];
+            success[0] = u8::MAX;
+
             let mut devices = devices.lock().await;
             if devices.get(&addr).is_none() {
-                let device = adapter.device(Address::new(addr)).unwrap();
+                match time::timeout(
+                    Duration::from_secs(FOUND_DEVICE_TIMEOUT_SECS),
+                    get_device(addr),
+                )
+                .await
+                {
+                    Err(_) => {
+                        // Timed out
+                        eprintln!("[WARN] Timeout during device discovery, address: {addr:?}");
+                        return_error(&mut stream, OutputCode::DeviceNotFound).await;
+                        return;
+                    }
+                    Ok(value) => {
+                        let myb_device = match value {
+                            Ok(myb_device) => myb_device,
+                            Err(err) => {
+                                eprintln!("[ERROR] Cannot get device, address: {addr:?} {err:?}");
+                                return_error(&mut stream, OutputCode::Failure).await;
+                                return;
+                            }
+                        };
 
-                devices.insert(addr, HueDevice::new_with_device(device.address(), device));
+                        println!("after get_device {myb_device:?}");
+
+                        let Some(device) = myb_device else {
+                            eprintln!("[WARN] Timeout during device discovery, address: {addr:?}");
+                            return_error(&mut stream, OutputCode::DeviceNotFound).await;
+                            return;
+                        };
+
+                        devices.insert(addr, device);
+                    }
+                }
             }
             let hue_device = devices.get_mut(&addr).unwrap();
             if hue_device.services.is_none() {
@@ -162,8 +192,6 @@ async fn process_conn(
             let hue_device = hue_device.clone();
             drop(devices);
 
-            let mut success = [0; OUTPUT_LEN];
-            success[0] = 3;
             let mut commands = get_commands_from_flags(flags);
 
             if commands.contains(&Command::Connect) {
@@ -182,9 +210,9 @@ async fn process_conn(
                             res_to_u8!(hue_device.set_power(data[0]).await)
                         } else if let Ok(state) = hue_device.get_power().await {
                             success[1] = state as _;
-                            SUCCESS
+                            OutputCode::Success.into()
                         } else {
-                            FAILURE
+                            OutputCode::Failure.into()
                         }
                     }
                     Command::Brightness { .. } => {
@@ -192,9 +220,9 @@ async fn process_conn(
                             res_to_u8!(hue_device.set_brightness(data[0]).await)
                         } else if let Ok(v) = hue_device.get_brightness().await {
                             success[1] = v as _;
-                            SUCCESS
+                            OutputCode::Success.into()
                         } else {
-                            FAILURE
+                            OutputCode::Failure.into()
                         }
                     }
                     Command::ColorRgb { .. }
@@ -210,9 +238,9 @@ async fn process_conn(
                                 success[i + 1] = *byte;
                             }
 
-                            SUCCESS
+                            OutputCode::Success.into()
                         } else {
-                            FAILURE
+                            OutputCode::Failure.into()
                         }
                     }
                     Command::Name => {
@@ -241,13 +269,20 @@ async fn process_conn(
                 sleep(Duration::from_millis(100)).await;
             }
 
-            if success[0] != 3 {
+            if success[0] != u8::MAX {
                 stream.write_all(&success).await.unwrap();
                 stream.flush().await.unwrap();
             }
         }
         Err(error) => eprintln!("Error on connection: {error}"),
     }
+}
+
+async fn return_error(stream: &mut Stream, output_code: OutputCode) {
+    let mut buf = [0; OUTPUT_LEN];
+    buf[0] = output_code.into();
+    stream.write_all(&buf).await.unwrap();
+    stream.flush().await.unwrap();
 }
 
 async fn check_if_path_is_writable() {
@@ -271,22 +306,12 @@ async fn check_if_path_is_writable() {
     let _ = fs::remove_file("/var/run/x").await;
 }
 
-async fn get_adapter() -> bluer::Result<Adapter> {
-    let session = Session::new().await?;
-    let adapter = session.default_adapter().await?;
-
-    if !adapter.is_powered().await? {
-        adapter.set_powered(true).await?;
-    }
-
-    Ok(adapter)
-}
-
 fn get_commands_from_flags(flags: MaskT) -> Vec<Command> {
     use rustbee_common::constants::flags::*;
 
     let mut v = Vec::new();
 
+    // Could also do flags & CONNECT == CONNECT where connect is the mask
     if (flags >> (CONNECT - 1)) & 1 == 1 {
         v.push(Command::Connect);
     }

@@ -11,6 +11,9 @@ pub const POWER_UUID: Uuid = uuid!("932c32bd-0002-47a2-835a-a8d455b859dd");
 pub const BRIGHTNESS_UUID: Uuid = uuid!("932c32bd-0003-47a2-835a-a8d455b859dd");
 pub const TEMPERATURE_UUID: Uuid = uuid!("932c32bd-0004-47a2-835a-a8d455b859dd");
 pub const COLOR_UUID: Uuid = uuid!("932c32bd-0005-47a2-835a-a8d455b859dd");
+pub const MISC_SERVICES_UUID: Uuid = uuid!("0000180a-0000-1000-8000-00805f9b34fb");
+pub const MODEL_UUID: Uuid = uuid!("00002a24-0000-1000-8000-00805f9b34fb");
+pub const MANUFACTURER_UUID: Uuid = uuid!("00002a29-0000-1000-8000-00805f9b34fb");
 
 pub const SOCKET_PATH: &str = "/var/run/rustbee-daemon.sock"; // Needs to be sudo bc /run is root owned
 
@@ -20,8 +23,38 @@ pub const DATA_LEN: usize = 6;
 pub const OUTPUT_LEN: usize = 13; // 8 bytes output data + 1 for status which is SUCCESS or FAILURE
                                   // (initially 4 bytes but extented to contain a few string bytes)
 
-pub const SUCCESS: u8 = 1;
-pub const FAILURE: u8 = 0;
+pub enum OutputCode {
+    Success,
+    Failure,
+    DeviceNotFound,
+}
+
+impl OutputCode {
+    pub fn is_success(&self) -> bool {
+        matches!(*self, Self::Success)
+    }
+}
+
+impl From<u8> for OutputCode {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => OutputCode::Success,
+            1 => OutputCode::Failure,
+            2 => OutputCode::DeviceNotFound,
+            x => panic!("Output code is {x} which is not handled"),
+        }
+    }
+}
+
+impl From<OutputCode> for u8 {
+    fn from(value: OutputCode) -> Self {
+        match value {
+            OutputCode::Success => 0,
+            OutputCode::Failure => 1,
+            OutputCode::DeviceNotFound => 2,
+        }
+    }
+}
 
 pub const SET: u8 = 1;
 pub const GET: u8 = 0;
