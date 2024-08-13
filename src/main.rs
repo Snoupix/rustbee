@@ -14,7 +14,7 @@ async fn main() -> bluer::Result<()> {
 
     // Returns Result<Vec<HueDevice<Client>>> infered because the Command::handle fn requires a
     // Client variant so the turbofish would be useless
-    let hue_bars = get_devices(&match &args.hex_mac_addresses {
+    let hue_devices = get_devices(&match &args.hex_mac_addresses {
         Some(values) => values
             .clone()
             .into_iter()
@@ -24,8 +24,8 @@ async fn main() -> bluer::Result<()> {
     })
     .await?;
 
-    for hue_bar in hue_bars {
-        tasks.push(tokio::spawn(command.handle(hue_bar)));
+    for hue_device in hue_devices {
+        tasks.push(tokio::spawn(command.handle(hue_device)));
     }
 
     for task in tasks {
@@ -35,8 +35,8 @@ async fn main() -> bluer::Result<()> {
     Ok(())
 }
 
-fn parse_hex_address(address: String) -> [u8; 6] {
-    let mut addr = [0; 6];
+fn parse_hex_address(address: String) -> [u8; ADDR_LEN] {
+    let mut addr = [0; ADDR_LEN];
     let chars = address.chars().filter(|c| *c != ':');
     let bytes = chars
         .clone()
@@ -52,8 +52,8 @@ fn parse_hex_address(address: String) -> [u8; 6] {
         .collect::<Vec<_>>();
 
     assert!(
-        bytes.len() == 6,
-        "[ERROR] Hex address {address} is not right. It must be of length 6 => xx:xx:xx:xx:xx:xx"
+        bytes.len() == ADDR_LEN,
+        "[ERROR] Hex address {address} is not right. It must be of length {ADDR_LEN} => xx:xx:xx:xx:xx:xx"
     );
 
     for (i, byte) in bytes.into_iter().enumerate() {

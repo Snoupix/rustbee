@@ -31,7 +31,7 @@ const EMPTY_BUFFER: [u8; DATA_LEN + 1] = [0; DATA_LEN + 1];
 
 #[derive(Debug, Default)]
 pub struct FoundDevice {
-    pub address: [u8; 6],
+    pub address: [u8; ADDR_LEN],
     pub name: String,
 }
 
@@ -471,7 +471,6 @@ where
         self.send_packet_to_daemon(CONNECT, buf).await
     }
 
-    // pub async fn search_by_name(name: &String) -> Vec<FoundDevice> {
     pub async fn search_by_name(
         name: &String,
     ) -> Pin<Box<dyn stream::Stream<Item = FoundDevice> + Send>> {
@@ -479,26 +478,15 @@ where
         let bytes = name.as_bytes();
         let len = usize::min(bytes.len(), buf.len());
 
-        // Handle it better
-        if len < buf.len() {
-            println!(
-                "{:?} {} {} {}",
-                &buf[1..len + 1],
-                buf.len(),
-                bytes.len(),
-                len
-            );
-            // 1 for set/get byte offset
-            buf[1..len + 1].copy_from_slice(&bytes[..len]);
-            println!("{:?}", &buf[1..len + 1]);
-        }
+        // 1 for set/get byte offset
+        buf[1..len + 1].copy_from_slice(&bytes[..len]);
 
         let get_found_device = |device_buf: [u8; OUTPUT_LEN - 1]| {
-            let mut address = [0; 6];
+            let mut address = [0; ADDR_LEN];
             let len = address.len();
             address.copy_from_slice(&device_buf[..len]);
 
-            let del = device_buf[len..]
+            let idx = device_buf[len..]
                 .iter()
                 .position(|b| *b == b'\0')
                 .unwrap_or(device_buf[len..].len())
@@ -507,7 +495,7 @@ where
 
             FoundDevice {
                 address,
-                name: String::from_utf8(device_buf[len..del].to_vec()).unwrap(),
+                name: String::from_utf8(device_buf[len..idx].to_vec()).unwrap(),
             }
         };
 
@@ -516,8 +504,8 @@ where
         let stream_iter = stream::unfold(
             Some((Arc::clone(&stream), false)),
             move |state| async move {
-                let (stream_guard_ptr, is_stream_initiated) = state?;
-                let mut stream_guard = stream_guard_ptr.lock().await;
+                let (stream_guard_ref, is_stream_initiated) = state?;
+                let mut stream_guard = stream_guard_ref.lock().await;
 
                 if !is_stream_initiated {
                     let (code, device_buf) =
@@ -530,7 +518,7 @@ where
 
                     drop(stream_guard);
 
-                    return Some((get_found_device(device_buf), Some((stream_guard_ptr, true))));
+                    return Some((get_found_device(device_buf), Some((stream_guard_ref, true))));
                 }
 
                 let (code, device_buf) = Self::receive_packet_from_daemon(&mut stream_guard).await;
@@ -543,11 +531,11 @@ where
 
                 drop(stream_guard);
 
-                Some((get_found_device(device_buf), Some((stream_guard_ptr, true))))
+                Some((get_found_device(device_buf), Some((stream_guard_ref, true))))
             },
         );
 
-        Box::pin(stream_iter.filter(|device| future::ready(device.address != [0; 6])))
+        Box::pin(stream_iter.filter(|device| future::ready(device.address != [0; ADDR_LEN])))
     }
 
     pub async fn disconnect_device(&self) -> OutputCode {
@@ -584,7 +572,7 @@ where
     /// Data is DATA_LEN + 1 for set/get flag
     async fn _send_packet_to_daemon(
         stream: &mut Stream,
-        address: Option<[u8; 6]>,
+        address: Option<[u8; ADDR_LEN]>,
         flags: MaskT,
         data: [u8; DATA_LEN + 1],
     ) -> CmdOutput {
@@ -596,7 +584,7 @@ where
                 chunks[i] = *byte;
             }
         }
-        offset = 6; // Address length
+        offset = ADDR_LEN;
         chunks[offset] = (flags & 0xff) as _;
         offset += 1;
         chunks[offset] = (flags >> 8) as _;
@@ -658,7 +646,7 @@ where
                 Ok(Some(AdapterEvent::DeviceAdded(addr))) => {
                     if let Ok(ble_device) = adapter.device(addr) {
                         if let Ok(Some(device_name)) = ble_device.name().await {
-                            if device_name.contains(&name) {
+                            if device_name.to_lowercase().contains(&name.to_lowercase()) {
                                 let mut hue_device = HueDevice::new(addr);
                                 hue_device.set_device(ble_device);
                                 return Some((hue_device, Some((discovery, adapter, name))));
@@ -679,7 +667,7 @@ where
     })))
 }
 
-pub async fn get_device<T>(address: [u8; 6]) -> bluer::Result<Option<HueDevice<T>>>
+pub async fn get_device<T>(address: [u8; ADDR_LEN]) -> bluer::Result<Option<HueDevice<T>>>
 where
     T: std::fmt::Debug,
     HueDevice<T>: Default,
@@ -718,7 +706,7 @@ where
     Ok(device)
 }
 
-pub async fn get_devices<T>(addrs: &[[u8; 6]]) -> bluer::Result<Vec<HueDevice<T>>>
+pub async fn get_devices<T>(addrs: &[[u8; ADDR_LEN]]) -> bluer::Result<Vec<HueDevice<T>>>
 where
     T: std::fmt::Debug,
     HueDevice<T>: Default,
@@ -732,7 +720,7 @@ where
 
     let mut discovery = adapter.discover_devices().await?;
     let mut pinned_disco = unsafe { Pin::new_unchecked(&mut discovery) };
-    let mut addresses: HashMap<[u8; 6], HueDevice<T>> = HashMap::with_capacity(addrs.len());
+    let mut addresses: HashMap<[u8; ADDR_LEN], HueDevice<T>> = HashMap::with_capacity(addrs.len());
 
     addrs.iter().for_each(|addr| {
         addresses.insert(*addr, HueDevice::new(Address::new(*addr)));

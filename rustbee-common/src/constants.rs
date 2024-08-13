@@ -2,8 +2,8 @@ use uuid::{uuid, Uuid};
 
 pub type MaskT = u16;
 
-pub const HUE_BAR_1_ADDR: [u8; 6] = [0xE8, 0xD4, 0xEA, 0xC4, 0x62, 0x00];
-pub const HUE_BAR_2_ADDR: [u8; 6] = [0xEC, 0x27, 0xA7, 0xD6, 0x5A, 0x9C];
+pub const HUE_BAR_1_ADDR: [u8; ADDR_LEN] = [0xE8, 0xD4, 0xEA, 0xC4, 0x62, 0x00];
+pub const HUE_BAR_2_ADDR: [u8; ADDR_LEN] = [0xEC, 0x27, 0xA7, 0xD6, 0x5A, 0x9C];
 
 // Thanks to https://gist.github.com/shinyquagsire23/f7907fdf6b470200702e75a30135caf3 for the UUIDs
 pub const LIGHT_SERVICES_UUID: Uuid = uuid!("932c32bd-0000-47a2-835a-a8d455b859dd");
@@ -20,8 +20,8 @@ pub const SOCKET_PATH: &str = "/var/run/rustbee-daemon.sock"; // Needs to be sud
 /// Buffer input
 /// Sent by the client
 /// Received by the server
-pub const BUFFER_LEN: usize = 6 + 2 + 1 + DATA_LEN; // 6 bytes BLE UUID length + 2 for the flags (u16 divided by 2 u8)
-                                                    // + 1 for the SET/GET flag + DATA_LEN for values when SET
+pub const BUFFER_LEN: usize = ADDR_LEN + 2 + 1 + DATA_LEN; // ADDR_LEN bytes BLE UUID length + 2 for the flags (u16 divided by 2 u8)
+                                                           // + 1 for the SET/GET flag + DATA_LEN for values when SET
 
 /// Buffer output
 /// Sent by the server
@@ -29,6 +29,7 @@ pub const BUFFER_LEN: usize = 6 + 2 + 1 + DATA_LEN; // 6 bytes BLE UUID length +
 pub const OUTPUT_LEN: usize = 1 + 19; // 1 for output status code + 20 bytes output data (mostly because of strings)
 
 pub const DATA_LEN: usize = 10;
+pub const ADDR_LEN: usize = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OutputCode {
@@ -70,8 +71,8 @@ impl From<OutputCode> for u8 {
     }
 }
 
-pub const SET: u8 = 1;
 pub const GET: u8 = 0;
+pub const SET: u8 = 1;
 
 pub mod flags {
     use super::MaskT;

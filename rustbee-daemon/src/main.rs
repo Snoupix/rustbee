@@ -17,8 +17,9 @@ use tokio::{
 };
 
 use rustbee_common::bluetooth::*;
-
-use rustbee_common::constants::{MaskT, OutputCode, BUFFER_LEN, OUTPUT_LEN, SET, SOCKET_PATH};
+use rustbee_common::constants::{
+    MaskT, OutputCode, ADDR_LEN, BUFFER_LEN, OUTPUT_LEN, SET, SOCKET_PATH,
+};
 
 const TIMEOUT_SECS: u64 = 60 * 5;
 const FOUND_DEVICE_TIMEOUT_SECS: u64 = 30;
@@ -73,7 +74,7 @@ async fn main() {
         }
     };
 
-    let devices: Arc<Mutex<HashMap<[u8; 6], HueDevice<Server>>>> =
+    let devices: Arc<Mutex<HashMap<[u8; ADDR_LEN], HueDevice<Server>>>> =
         Arc::new(Mutex::new(HashMap::new()));
 
     loop {
@@ -108,7 +109,7 @@ async fn main() {
  */
 async fn process_conn(
     conn: Result<Stream, Error>,
-    devices: Arc<Mutex<HashMap<[u8; 6], HueDevice<Server>>>>,
+    devices: Arc<Mutex<HashMap<[u8; ADDR_LEN], HueDevice<Server>>>>,
 ) {
     match conn {
         Ok(mut stream) => {
@@ -117,7 +118,7 @@ async fn process_conn(
                 eprintln!("Unexpected error on reading chunks: {error}");
                 return;
             }
-            let mut addr = [0; 6];
+            let mut addr = [0; ADDR_LEN];
             for (i, byte) in buf[..addr.len()].iter().enumerate() {
                 addr[i] = *byte;
             }

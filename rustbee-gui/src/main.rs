@@ -18,7 +18,7 @@ use rustbee_common::bluetooth::{get_devices, Client, FoundDevice, HueDevice};
 use rustbee_common::color_space::Rgb;
 use rustbee_common::colors::Xy;
 use rustbee_common::constants::{
-    flags::COLOR_RGB, OutputCode, DATA_LEN, HUE_BAR_1_ADDR, HUE_BAR_2_ADDR,
+    flags::COLOR_RGB, OutputCode, ADDR_LEN, DATA_LEN, HUE_BAR_1_ADDR, HUE_BAR_2_ADDR,
 };
 use rustbee_common::BluetoothAddr;
 
@@ -84,7 +84,7 @@ impl From<HueDevice<Client>> for HueDeviceWrapper {
     }
 }
 
-type AppDevices = HashMap<[u8; 6], HueDeviceWrapper>;
+type AppDevices = HashMap<[u8; ADDR_LEN], HueDeviceWrapper>;
 
 struct App {
     devices: Arc<RwLock<AppDevices>>,
@@ -200,7 +200,7 @@ impl eframe::App for App {
                     });
 
                     ui.horizontal(|ui| {
-                        ui.label("Add a Philips Hue device by (partial) name (case sensitive)");
+                        ui.label("Add a Philips Hue device by (partial) name");
                         ui.text_edit_singleline(&mut self.device_name_search);
                         // TODO: Make it less ugly if possible
                         while self.device_name_search.as_bytes().len() > SEARCH_MAX_CHARS {
@@ -208,14 +208,14 @@ impl eframe::App for App {
                         }
                         if ui.button("Search").clicked() {
                             let name = self.device_name_search.clone();
-                            let devices_found_ptr = Arc::clone(&self.devices_found);
+                            let devices_found_ref = Arc::clone(&self.devices_found);
 
                             run_async!(self, async move {
                                 let name = name;
                                 let mut stream = HueDevice::search_by_name(&name).await;
 
                                 while let Some(device) = stream.next().await {
-                                    let mut devices_found = devices_found_ptr.write().await;
+                                    let mut devices_found = devices_found_ref.write().await;
                                     devices_found.push(device);
                                 }
 
@@ -229,12 +229,12 @@ impl eframe::App for App {
                     if !devices_found.is_empty() {
                         ui.horizontal(|ui| {
                             if self.channel.is_none() && ui.button("close").clicked() {
-                                let devices_found_ptr = Arc::clone(&self.devices_found);
+                                let devices_found_ref = Arc::clone(&self.devices_found);
 
                                 run_async!(self, async move {
                                     // This causes a race on the read block_on above but it's fast
                                     // enought not to cause any issues
-                                    let mut devices_found = devices_found_ptr.write().await;
+                                    let mut devices_found = devices_found_ref.write().await;
                                     devices_found.clear();
 
                                     true

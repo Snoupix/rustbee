@@ -2,10 +2,10 @@ use std::f64;
 
 use clap::{Parser, Subcommand};
 use color_space::{FromRgb, Rgb, Xyz};
-use rustbee_common::constants::{masks::*, MaskT};
 
 use rustbee_common::bluetooth::{Client, HueDevice};
 use rustbee_common::colors::Xy;
+use rustbee_common::constants::{flags::*, MaskT, ADDR_LEN};
 
 #[derive(Debug, Parser)]
 pub struct Args {
@@ -197,7 +197,10 @@ impl Command {
                             read = true;
                         } else {
                             let hex = hex.clone().unwrap();
-                            assert!(hex.len() == 6, "Hex lenght must be 6 like so: ffFF00");
+                            assert!(
+                                hex.len() == ADDR_LEN,
+                                "Hex lenght must be {ADDR_LEN} like so: ffFF00"
+                            );
                             let odd_it = hex.chars().skip(1).step_by(2);
                             let [r, g, b] = hex
                                 .chars()
