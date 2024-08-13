@@ -2,20 +2,22 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 
 use bluer::{
     gatt::remote::{Characteristic as BlueCharacteristic, Service as BlueService},
     AdapterEvent, Address, Device, Session,
 };
-use futures::StreamExt;
+use futures::{future, stream, StreamExt};
 use interprocess::{
     local_socket::{tokio::Stream, traits::tokio::Stream as _, ToFsName as _},
     os::unix::local_socket::FilesystemUdSocket,
 };
+use tokio::sync::Mutex;
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
-    time::sleep,
+    time::{self, sleep},
 };
 use uuid::Uuid;
 
@@ -24,6 +26,14 @@ use crate::constants::{
     masks::*,
     *,
 };
+
+const EMPTY_BUFFER: [u8; DATA_LEN + 1] = [0; DATA_LEN + 1];
+
+#[derive(Debug, Default)]
+pub struct FoundDevice {
+    pub address: [u8; 6],
+    pub name: String,
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct Client;
@@ -90,7 +100,9 @@ impl Deref for Characteristic {
     }
 }
 
-impl<T> Deref for HueDevice<T> {
+// The client doesn't use the bluetooth struct so only the server needs to deref since the client
+// device field should always be None
+impl Deref for HueDevice<Server> {
     type Target = Device;
 
     /// Be sure to use it wisely since it NEEDS to have the device set
@@ -101,7 +113,7 @@ impl<T> Deref for HueDevice<T> {
 
 impl<T> HueDevice<T>
 where
-    HueDevice<T>: Default + Deref<Target = Device> + std::fmt::Debug,
+    HueDevice<T>: Default + std::fmt::Debug,
 {
     pub fn new(addr: Address) -> Self {
         Self {
@@ -309,6 +321,10 @@ where
         Ok(())
     }
 
+    pub async fn is_device_connected(&self) -> bluer::Result<bool> {
+        (*self).is_connected().await
+    }
+
     pub async fn get_power(&self) -> bluer::Result<bool> {
         let read = self
             .read_gatt_char(&LIGHT_SERVICES_UUID, &POWER_UUID)
@@ -385,14 +401,14 @@ type CmdOutput = (OutputCode, [u8; OUTPUT_LEN - 1]);
 
 impl HueDevice<Client>
 where
-    HueDevice<Client>: Default + Deref<Target = Device> + std::fmt::Debug,
+    HueDevice<Client>: Default + std::fmt::Debug,
 {
     pub async fn pair(&self) -> OutputCode {
-        self.send_packet_to_daemon(PAIR, [0; 6]).await.0
+        self.send_packet_to_daemon(PAIR, EMPTY_BUFFER).await.0
     }
 
     pub async fn set_power(&self, state: bool) -> OutputCode {
-        let mut buf = [0u8; DATA_LEN];
+        let mut buf = EMPTY_BUFFER;
         buf[0] = SET;
         buf[1] = state as _;
 
@@ -400,14 +416,12 @@ where
     }
 
     pub async fn get_power(&self) -> CmdOutput {
-        let mut buf = [0u8; DATA_LEN];
-        buf[0] = GET;
-
-        self.send_packet_to_daemon(CONNECT | POWER, buf).await
+        self.send_packet_to_daemon(CONNECT | POWER, EMPTY_BUFFER)
+            .await
     }
 
     pub async fn set_brightness(&self, value: u8) -> OutputCode {
-        let mut buf = [0u8; DATA_LEN];
+        let mut buf = EMPTY_BUFFER;
         buf[0] = SET;
         buf[1] = (((value as f32) / 100.) * 0xff as f32) as _;
 
@@ -417,25 +431,21 @@ where
     }
 
     pub async fn get_brightness(&self) -> CmdOutput {
-        let mut buf = [0u8; DATA_LEN];
-        buf[0] = GET;
-
-        self.send_packet_to_daemon(CONNECT | BRIGHTNESS, buf).await
+        self.send_packet_to_daemon(CONNECT | BRIGHTNESS, EMPTY_BUFFER)
+            .await
     }
 
     pub async fn get_colors(&self, color_mask: MaskT) -> CmdOutput {
         assert!([COLOR_XY, COLOR_RGB, COLOR_HEX].contains(&color_mask));
 
-        let mut buf = [0u8; DATA_LEN];
-        buf[0] = GET;
-
-        self.send_packet_to_daemon(CONNECT | color_mask, buf).await
+        self.send_packet_to_daemon(CONNECT | color_mask, EMPTY_BUFFER)
+            .await
     }
 
     pub async fn set_colors(&self, scaled_x: u16, scaled_y: u16, color_mask: MaskT) -> OutputCode {
         assert!([COLOR_XY, COLOR_RGB, COLOR_HEX].contains(&color_mask));
 
-        let mut buf = [0u8; DATA_LEN];
+        let mut buf = EMPTY_BUFFER;
         buf[0] = SET;
         buf[1] = (scaled_x & 0xFF) as _;
         buf[2] = (scaled_x >> 8) as _;
@@ -448,52 +458,162 @@ where
     }
 
     pub async fn get_name(&self) -> CmdOutput {
-        let mut buf = [0u8; DATA_LEN];
+        let mut buf = EMPTY_BUFFER;
         buf[0] = GET;
 
-        self.send_packet_to_daemon(NAME, buf).await
+        self.send_packet_to_daemon(CONNECT, buf).await
+    }
+
+    pub async fn is_connected(&self) -> CmdOutput {
+        let mut buf = EMPTY_BUFFER;
+        buf[0] = GET;
+
+        self.send_packet_to_daemon(CONNECT, buf).await
+    }
+
+    // pub async fn search_by_name(name: &String) -> Vec<FoundDevice> {
+    pub async fn search_by_name(
+        name: &String,
+    ) -> Pin<Box<dyn stream::Stream<Item = FoundDevice> + Send>> {
+        let mut buf = EMPTY_BUFFER;
+        let bytes = name.as_bytes();
+        let len = usize::min(bytes.len(), buf.len());
+
+        // Handle it better
+        if len < buf.len() {
+            println!(
+                "{:?} {} {} {}",
+                &buf[1..len + 1],
+                buf.len(),
+                bytes.len(),
+                len
+            );
+            // 1 for set/get byte offset
+            buf[1..len + 1].copy_from_slice(&bytes[..len]);
+            println!("{:?}", &buf[1..len + 1]);
+        }
+
+        let get_found_device = |device_buf: [u8; OUTPUT_LEN - 1]| {
+            let mut address = [0; 6];
+            let len = address.len();
+            address.copy_from_slice(&device_buf[..len]);
+
+            let del = device_buf[len..]
+                .iter()
+                .position(|b| *b == b'\0')
+                .unwrap_or(device_buf[len..].len())
+                + len; // since I'm getting the index of the sub_slice [len..] I need to add the
+                       // offset len to have the exact index of the slice
+
+            FoundDevice {
+                address,
+                name: String::from_utf8(device_buf[len..del].to_vec()).unwrap(),
+            }
+        };
+
+        let stream = Arc::new(Mutex::new(Self::get_file_socket().await));
+
+        let stream_iter = stream::unfold(
+            Some((Arc::clone(&stream), false)),
+            move |state| async move {
+                let (stream_guard_ptr, is_stream_initiated) = state?;
+                let mut stream_guard = stream_guard_ptr.lock().await;
+
+                if !is_stream_initiated {
+                    let (code, device_buf) =
+                        Self::_send_packet_to_daemon(&mut stream_guard, None, SEARCH_NAME, buf)
+                            .await;
+
+                    if code != OutputCode::Streaming {
+                        return None;
+                    }
+
+                    drop(stream_guard);
+
+                    return Some((get_found_device(device_buf), Some((stream_guard_ptr, true))));
+                }
+
+                let (code, device_buf) = Self::receive_packet_from_daemon(&mut stream_guard).await;
+
+                match code {
+                    // Failure is already handled by the receive_packet fn above
+                    OutputCode::Failure | OutputCode::StreamEOF => return None,
+                    _ => (),
+                }
+
+                drop(stream_guard);
+
+                Some((get_found_device(device_buf), Some((stream_guard_ptr, true))))
+            },
+        );
+
+        Box::pin(stream_iter.filter(|device| future::ready(device.address != [0; 6])))
     }
 
     pub async fn disconnect_device(&self) -> OutputCode {
-        let mut buf = [0u8; DATA_LEN];
-        buf[0] = GET;
-
-        self.send_packet_to_daemon(DISCONNECT, buf).await.0
+        self.send_packet_to_daemon(DISCONNECT, EMPTY_BUFFER).await.0
     }
 
     pub async fn connect_device(&self) -> OutputCode {
-        let mut buf = [0u8; DATA_LEN];
-        buf[0] = GET;
-
-        self.send_packet_to_daemon(CONNECT, buf).await.0
+        self.send_packet_to_daemon(CONNECT, EMPTY_BUFFER).await.0
     }
 
-    async fn send_packet_to_daemon(&self, flags: MaskT, data: [u8; DATA_LEN]) -> CmdOutput {
-        let mut output = [0; OUTPUT_LEN - 1];
-
+    async fn get_file_socket() -> Stream {
         let fs_name = SOCKET_PATH
             .to_fs_name::<FilesystemUdSocket>()
             .unwrap_or_else(|error| {
                 eprintln!("Error cannot create filesystem path name: {error}");
                 std::process::exit(2);
             });
-        let mut stream = Stream::connect(fs_name).await.unwrap_or_else(|error| {
+        Stream::connect(fs_name).await.unwrap_or_else(|error| {
             eprintln!("Error cannot connect to file socket name: {SOCKET_PATH} => {error}");
             std::process::exit(2);
-        });
+        })
+    }
 
+    async fn send_packet_to_daemon(&self, flags: MaskT, data: [u8; DATA_LEN + 1]) -> CmdOutput {
+        Self::_send_packet_to_daemon(
+            &mut Self::get_file_socket().await,
+            Some(*self.addr),
+            flags,
+            data,
+        )
+        .await
+    }
+
+    /// Data is DATA_LEN + 1 for set/get flag
+    async fn _send_packet_to_daemon(
+        stream: &mut Stream,
+        address: Option<[u8; 6]>,
+        flags: MaskT,
+        data: [u8; DATA_LEN + 1],
+    ) -> CmdOutput {
+        #[allow(unused_assignments)]
+        let mut offset = 0;
         let mut chunks = [0; BUFFER_LEN];
-        for (i, byte) in self.addr.0.iter().enumerate() {
-            chunks[i] = *byte;
+        if let Some(addr) = address {
+            for (i, byte) in addr.iter().enumerate() {
+                chunks[i] = *byte;
+            }
         }
-        chunks[DATA_LEN] = (flags & 0xff) as _;
-        chunks[DATA_LEN + 1] = (flags >> 8) as _;
+        offset = 6; // Address length
+        chunks[offset] = (flags & 0xff) as _;
+        offset += 1;
+        chunks[offset] = (flags >> 8) as _;
+        offset += 1;
         for (i, byte) in data.iter().enumerate() {
-            chunks[i + DATA_LEN + 2] = *byte;
+            chunks[i + offset] = *byte;
         }
 
         stream.write_all(&chunks[..]).await.unwrap();
         stream.flush().await.unwrap();
+
+        Self::receive_packet_from_daemon(stream).await
+    }
+
+    async fn receive_packet_from_daemon(stream: &mut Stream) -> CmdOutput {
+        // - 1 since the first byte is the output code
+        let mut output = [0; OUTPUT_LEN - 1];
 
         let mut buf = [0; OUTPUT_LEN];
         if let Err(error) = stream.read_exact(&mut buf).await {
@@ -507,6 +627,56 @@ where
 
         (OutputCode::from(buf[0]), output)
     }
+}
+
+pub async fn search_devices_by_name<T>(
+    name: &str,
+    timeout_seconds: u64,
+) -> bluer::Result<Pin<Box<dyn stream::Stream<Item = HueDevice<T>> + Send>>>
+where
+    T: std::fmt::Debug + Send + 'static,
+    HueDevice<T>: Default,
+{
+    let session = Session::new().await?;
+    let adapter = session.default_adapter().await?;
+
+    if !adapter.is_powered().await? {
+        adapter.set_powered(true).await?;
+    }
+
+    let discovery = adapter.discover_devices().await?;
+
+    let stream = stream::unfold(
+        Some((discovery, adapter, name.to_string())),
+        move |state| async move {
+            let (mut discovery, adapter, name) = match state {
+                Some(state) => state,
+                None => return None,
+            };
+
+            match time::timeout(Duration::from_secs(timeout_seconds), discovery.next()).await {
+                Ok(Some(AdapterEvent::DeviceAdded(addr))) => {
+                    if let Ok(ble_device) = adapter.device(addr) {
+                        if let Ok(Some(device_name)) = ble_device.name().await {
+                            if device_name.contains(&name) {
+                                let mut hue_device = HueDevice::new(addr);
+                                hue_device.set_device(ble_device);
+                                return Some((hue_device, Some((discovery, adapter, name))));
+                            }
+                        }
+                    }
+                }
+                Ok(None) | Err(_) => return None, // No more events or timeout reached
+                _ => (),
+            }
+
+            Some((HueDevice::default(), Some((discovery, adapter, name))))
+        },
+    );
+
+    Ok(Box::pin(stream.filter(|hue_device| {
+        future::ready(hue_device.device.is_some())
+    })))
 }
 
 pub async fn get_device<T>(address: [u8; 6]) -> bluer::Result<Option<HueDevice<T>>>
@@ -535,7 +705,7 @@ where
 
             // Device known but not in range
             if ble_device.rssi().await?.is_none() {
-                return Ok(device);
+                // TODO: Handle me (it, somehow returns None even if in range)
             }
 
             let mut hue_device = HueDevice::new(addr);

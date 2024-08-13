@@ -13,31 +13,26 @@ if &shortmess =~ 'A'
 else
   set shortmess=aoO
 endif
-badd +6 README.md
-badd +166 rustbee
+badd +64 README.md
+badd +142 rustbee
 badd +1 .gitignore
-badd +508 rustbee-gui/src/main.rs
+badd +601 rustbee-gui/src/main.rs
 badd +11 Cargo.toml
-badd +5 rustbee-common/src/lib.rs
-badd +52 rustbee-common/src/constants.rs
-badd +16 src/main.rs
-badd +141 rustbee-daemon/src/main.rs
+badd +6 rustbee-common/src/lib.rs
+badd +75 rustbee-common/src/constants.rs
+badd +63 src/main.rs
+badd +258 rustbee-daemon/src/main.rs
 badd +130 rustbee-common/src/colors.rs
-badd +499 rustbee-common/src/bluetooth.rs
+badd +471 rustbee-common/src/bluetooth.rs
 badd +11 rustbee-gui/Cargo.toml
-badd +74 src/cli.rs
+badd +59 src/cli.rs
+badd +1 rustbee-common/Cargo.toml
+badd +18 rustbee-common/src/tests.rs
 argglobal
 %argdel
-edit rustbee-daemon/src/main.rs
-wincmd t
-let s:save_winminheight = &winminheight
-let s:save_winminwidth = &winminwidth
-set winminheight=0
-set winheight=1
-set winminwidth=0
-set winwidth=1
+edit rustbee-gui/src/main.rs
 argglobal
-balt rustbee-gui/src/main.rs
+balt src/cli.rs
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -48,12 +43,12 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 140 - ((26 * winheight(0) + 27) / 55)
+let s:l = 601 - ((27 * winheight(0) + 27) / 55)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 140
-normal! 0
+keepjumps 601
+normal! 046|
 lcd ~/work/rustbee
 tabnext 1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0 && getbufvar(s:wipebuf, '&buftype') isnot# 'terminal'
@@ -62,14 +57,11 @@ endif
 unlet! s:wipebuf
 set winheight=1 winwidth=20
 let &shortmess = s:shortmess_save
-let &winminheight = s:save_winminheight
-let &winminwidth = s:save_winminwidth
 let s:sx = expand("<sfile>:p:r")."x.vim"
 if filereadable(s:sx)
   exe "source " . fnameescape(s:sx)
 endif
 let &g:so = s:so_save | let &g:siso = s:siso_save
-nohlsearch
 doautoall SessionLoadPost
 unlet SessionLoad
 " vim: set ft=vim :

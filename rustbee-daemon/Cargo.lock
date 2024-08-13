@@ -563,6 +563,7 @@ name = "rustbee-daemon"
 version = "0.1.0"
 dependencies = [
  "bluer",
+ "futures",
  "interprocess",
  "rustbee-common",
  "tokio",

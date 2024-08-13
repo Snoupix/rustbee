@@ -59,6 +59,10 @@ Depending on your CPU, compiling this project may take you around 2mins with or 
 1. rustbee-common (lib): Actual implementations of bluetooth devices and common stuff used by the other binaries
 1. rustbee-gui (bin): The GUI (Graphical User Interface) that can replace the CLI for a better UX and will also be a WASM module to use the browser instead of natiive GUI
 
+### TODO
+- [ ] Migrate from unix domain socket to local_socket for interop
+- [ ] Migrate from bluez to bleplug for interop
+
 ----
 
 *this is probably the most over-engineered project I've made yet* :') *but I'm proud of it!*

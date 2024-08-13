@@ -17,16 +17,26 @@ pub const MANUFACTURER_UUID: Uuid = uuid!("00002a29-0000-1000-8000-00805f9b34fb"
 
 pub const SOCKET_PATH: &str = "/var/run/rustbee-daemon.sock"; // Needs to be sudo bc /run is root owned
 
-pub const BUFFER_LEN: usize = 6 + 2 + 1 + DATA_LEN; // 6 bytes BLE id length + 2 for the flags
-                                                    // + 1 for the SET/GET flag + 6 for values when SET
-pub const DATA_LEN: usize = 6;
-pub const OUTPUT_LEN: usize = 13; // 8 bytes output data + 1 for status which is SUCCESS or FAILURE
-                                  // (initially 4 bytes but extented to contain a few string bytes)
+/// Buffer input
+/// Sent by the client
+/// Received by the server
+pub const BUFFER_LEN: usize = 6 + 2 + 1 + DATA_LEN; // 6 bytes BLE UUID length + 2 for the flags (u16 divided by 2 u8)
+                                                    // + 1 for the SET/GET flag + DATA_LEN for values when SET
 
+/// Buffer output
+/// Sent by the server
+/// Received by the client
+pub const OUTPUT_LEN: usize = 1 + 19; // 1 for output status code + 20 bytes output data (mostly because of strings)
+
+pub const DATA_LEN: usize = 10;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OutputCode {
     Success,
     Failure,
     DeviceNotFound,
+    Streaming,
+    StreamEOF,
 }
 
 impl OutputCode {
@@ -41,6 +51,8 @@ impl From<u8> for OutputCode {
             0 => OutputCode::Success,
             1 => OutputCode::Failure,
             2 => OutputCode::DeviceNotFound,
+            3 => OutputCode::Streaming,
+            4 => OutputCode::StreamEOF,
             x => panic!("Output code is {x} which is not handled"),
         }
     }
@@ -52,6 +64,8 @@ impl From<OutputCode> for u8 {
             OutputCode::Success => 0,
             OutputCode::Failure => 1,
             OutputCode::DeviceNotFound => 2,
+            OutputCode::Streaming => 3,
+            OutputCode::StreamEOF => 4,
         }
     }
 }
@@ -71,6 +85,7 @@ pub mod flags {
     pub const COLOR_XY: MaskT = 7;
     pub const BRIGHTNESS: MaskT = 8;
     pub const NAME: MaskT = 9;
+    pub const SEARCH_NAME: MaskT = 10;
 }
 
 pub mod masks {
@@ -85,8 +100,5 @@ pub mod masks {
     pub const COLOR_XY: MaskT = 1 << 6;
     pub const BRIGHTNESS: MaskT = 1 << 7;
     pub const NAME: MaskT = 1 << 8;
-}
-
-pub async fn get_path() -> &'static str {
-    SOCKET_PATH
+    pub const SEARCH_NAME: MaskT = 1 << 9;
 }

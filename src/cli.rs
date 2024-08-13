@@ -61,9 +61,9 @@ impl From<&Command> for MaskT {
 }
 
 impl Command {
-    pub async fn handle(&self, hue_bar: HueDevice<Client>) -> bluer::Result<()> {
-        if !hue_bar.pair().await.is_success() {
-            eprintln!("Error: failed to pair and trust device {}", hue_bar.addr);
+    pub async fn handle(&self, hue_device: HueDevice<Client>) -> bluer::Result<()> {
+        if !hue_device.pair().await.is_success() {
+            eprintln!("Error: failed to pair and trust device {}", hue_device.addr);
             return Ok(());
         }
 
@@ -71,28 +71,37 @@ impl Command {
             Self::PairAndTrust => (),
             Self::Power { state } => match state {
                 Some(state) => {
-                    if !hue_bar
+                    if !hue_device
                         .set_power(matches!(*state, State::On))
                         .await
                         .is_success()
                     {
                         eprintln!(
-                            "[ERROR] Failed to write power state to hue bar address: {}",
-                            hue_bar.addr
+                            "[ERROR] Failed to write power state to hue device address: {}",
+                            hue_device.addr
                         );
                     }
                 }
                 None => {
-                    let (res, state) = hue_bar.get_power().await;
+                    let (res, state) = hue_device.get_power().await;
                     let success = res.is_success();
 
                     if !success {
                         eprintln!(
-                            "[ERROR] Failed to read power state to hue bar address: {}",
-                            hue_bar.addr
+                            "[ERROR] Failed to read power state to hue device address: {}",
+                            hue_device.addr
                         );
                     } else {
-                        let name = hue_bar.name().await.unwrap_or(None).unwrap_or("".into());
+                        let (code, buf) = hue_device.get_name().await;
+                        let name = if !code.is_success() {
+                            eprintln!(
+                                "[ERROR] Failed to read device name from hue device address: {}",
+                                hue_device.addr
+                            );
+                            String::new()
+                        } else {
+                            String::from_utf8(buf.to_vec()).unwrap()
+                        };
 
                         println!(
                             "Device{} {} is {}",
@@ -101,7 +110,7 @@ impl Command {
                             } else {
                                 format!(" {name}")
                             },
-                            hue_bar.addr,
+                            hue_device.addr,
                             if state[0] == 1 { "ON" } else { "OFF" }
                         );
                     }
@@ -114,24 +123,33 @@ impl Command {
                         "[ERROR] Brightness value must be between 0 and 100 inclusive"
                     );
 
-                    if !hue_bar.set_brightness(*value).await.is_success() {
+                    if !hue_device.set_brightness(*value).await.is_success() {
                         eprintln!(
-                            "[ERROR] Failed to write brightness state to hue bar address: {}",
-                            hue_bar.addr
+                            "[ERROR] Failed to write brightness state to hue device address: {}",
+                            hue_device.addr
                         );
                     }
                 }
                 None => {
-                    let (res, brightness) = hue_bar.get_brightness().await;
+                    let (res, brightness) = hue_device.get_brightness().await;
                     let success = res.is_success();
 
                     if !success {
                         eprintln!(
-                            "[ERROR] Failed to get brightness level from hue bar address: {}",
-                            hue_bar.addr
+                            "[ERROR] Failed to get brightness level from hue device address: {}",
+                            hue_device.addr
                         );
                     } else {
-                        let name = hue_bar.name().await.unwrap_or(None).unwrap_or("".into());
+                        let (code, buf) = hue_device.get_name().await;
+                        let name = if !code.is_success() {
+                            eprintln!(
+                                "[ERROR] Failed to read device name from hue device address: {}",
+                                hue_device.addr
+                            );
+                            String::new()
+                        } else {
+                            String::from_utf8(buf.to_vec()).unwrap()
+                        };
 
                         println!(
                             "Device{} {} brightness level is {}%",
@@ -140,7 +158,7 @@ impl Command {
                             } else {
                                 format!(" {name}")
                             },
-                            hue_bar.addr,
+                            hue_device.addr,
                             (brightness[0] as f32 / 255.) * 100.
                         );
                     }
@@ -211,13 +229,13 @@ impl Command {
                 };
 
                 if read {
-                    let (res, data) = hue_bar.get_colors(MaskT::from(self)).await;
+                    let (res, data) = hue_device.get_colors(MaskT::from(self)).await;
                     let success = res.is_success();
 
                     if !success {
                         eprintln!(
-                            "[ERROR] Failed to get color data from hue bar address: {}",
-                            hue_bar.addr
+                            "[ERROR] Failed to get color data from hue device address: {}",
+                            hue_device.addr
                         );
                     } else {
                         let x = u16::from_le_bytes([data[0], data[1]]) as f64 / 0xFFFF as f64;
@@ -228,7 +246,7 @@ impl Command {
                         // TODO: Fix colors display / color processing
                         match self {
                             Self::ColorRgb { .. } => {
-                                let (res, brightness) = hue_bar.get_brightness().await;
+                                let (res, brightness) = hue_device.get_brightness().await;
                                 let success = res.is_success();
 
                                 if !success {
@@ -267,23 +285,23 @@ impl Command {
                     let scaled_x = (x * 0xFFFF as f64) as u16;
                     let scaled_y = (y * 0xFFFF as f64) as u16;
 
-                    if !hue_bar
+                    if !hue_device
                         .set_colors(scaled_x, scaled_y, MaskT::from(self))
                         .await
                         .is_success()
                     {
                         eprintln!(
                             "Error: daemon failed to disconnect from device {}",
-                            hue_bar.addr
+                            hue_device.addr
                         );
                     }
                 }
             }
             Self::Disconnect => {
-                if !hue_bar.disconnect_device().await.is_success() {
+                if !hue_device.disconnect_device().await.is_success() {
                     eprintln!(
                         "Error: daemon failed to disconnect from device {}",
-                        hue_bar.addr
+                        hue_device.addr
                     );
                 }
             }

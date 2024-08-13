@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use eframe::egui::{self, color_picker, CentralPanel, TopBottomPanel};
 use eframe::{CreationContext, NativeOptions};
+use futures::StreamExt as _;
 use tokio::runtime::{self, Runtime};
 use tokio::sync::{
     watch::{channel, Receiver},
@@ -13,11 +14,15 @@ use tokio::sync::{
 };
 use tokio::time::{self, Instant};
 
-use rustbee_common::bluetooth::{get_devices, Client, HueDevice};
+use rustbee_common::bluetooth::{get_devices, Client, FoundDevice, HueDevice};
 use rustbee_common::color_space::Rgb;
 use rustbee_common::colors::Xy;
-use rustbee_common::constants::{flags::COLOR_RGB, OutputCode, HUE_BAR_1_ADDR, HUE_BAR_2_ADDR};
+use rustbee_common::constants::{
+    flags::COLOR_RGB, OutputCode, DATA_LEN, HUE_BAR_1_ADDR, HUE_BAR_2_ADDR,
+};
 use rustbee_common::BluetoothAddr;
+
+const SEARCH_MAX_CHARS: usize = DATA_LEN;
 
 #[derive(Clone)]
 struct HueDeviceWrapper {
@@ -85,6 +90,8 @@ struct App {
     devices: Arc<RwLock<AppDevices>>,
     tokio_rt: Runtime,
     device_error: Option<String>,
+    device_name_search: String,
+    devices_found: Arc<RwLock<Vec<FoundDevice>>>,
     new_device_addr: String,
     is_new_device_addr_error: bool,
     channel: Option<Receiver<bool>>,
@@ -104,6 +111,8 @@ impl App {
             devices,
             tokio_rt,
             device_error: None,
+            device_name_search: String::new(),
+            devices_found: Arc::new(RwLock::new(Vec::new())),
             new_device_addr: String::new(),
             is_new_device_addr_error: false,
             channel: None,
@@ -111,15 +120,19 @@ impl App {
     }
 }
 
+/// Keep in mind that this overwrites the current receiver channel,
+/// making the previous future unable to be read (but not cancelled)
 macro_rules! run_async {
-    ($rt:expr, $f:expr) => {{
+    ($self:expr, $f:expr) => {{
         let (tx, rx) = channel(false);
 
-        $rt.spawn(async move {
-            tx.send($f.await).unwrap();
+        $self.tokio_rt.spawn(async move {
+            // Intentionally not handling the error since the receiver channel can be overwritten
+            // so the previous one is dropped
+            let _ = tx.send($f.await);
         });
 
-        rx
+        $self.channel = Some(rx);
     }};
 }
 
@@ -152,24 +165,29 @@ impl eframe::App for App {
                                 Ok(addr) => {
                                     let devices = Arc::clone(&devices);
 
-                                    self.tokio_rt.spawn(async move {
+                                    run_async!(self, async move {
+                                        let devices_read = devices.read().await;
+                                        if devices_read.get(&*addr).is_some() {
+                                            return false;
+                                        }
+                                        drop(devices_read);
+
                                         let mut devices = devices.write().await;
                                         let mut device = HueDeviceWrapper::from_address(addr);
+
                                         match device.pair().await {
                                             OutputCode::Success => {
                                                 device.is_paired = true;
                                                 device.is_found = true;
                                             },
-                                            OutputCode::Failure => {
-                                                device.is_paired = false;
-                                                device.is_found = true;
-                                            },
-                                            OutputCode::DeviceNotFound => {
+                                            _ => {
                                                 device.is_paired = false;
                                                 device.is_found = false;
                                             },
                                         }
+
                                         devices.insert(*addr, device);
+                                        true
                                     });
 
                                     self.is_new_device_addr_error = false;
@@ -181,11 +199,91 @@ impl eframe::App for App {
                         }
                     });
 
-                    // TODO: Maybe ? if devices are actually visible to public via bluetooth
-                    // discovery
-                    // ui.horizontal(|ui| {
-                    //     if ui.button("Add a Philips Hue device by discovery").clicked() {}
-                    // });
+                    ui.horizontal(|ui| {
+                        ui.label("Add a Philips Hue device by (partial) name (case sensitive)");
+                        ui.text_edit_singleline(&mut self.device_name_search);
+                        // TODO: Make it less ugly if possible
+                        while self.device_name_search.as_bytes().len() > SEARCH_MAX_CHARS {
+                            self.device_name_search.pop();
+                        }
+                        if ui.button("Search").clicked() {
+                            let name = self.device_name_search.clone();
+                            let devices_found_ptr = Arc::clone(&self.devices_found);
+
+                            run_async!(self, async move {
+                                let name = name;
+                                let mut stream = HueDevice::search_by_name(&name).await;
+
+                                while let Some(device) = stream.next().await {
+                                    let mut devices_found = devices_found_ptr.write().await;
+                                    devices_found.push(device);
+                                }
+
+                                true
+                            });
+                        }
+                    });
+
+                    let devices_found = self.tokio_rt.block_on(self.devices_found.read());
+
+                    if !devices_found.is_empty() {
+                        ui.horizontal(|ui| {
+                            if self.channel.is_none() && ui.button("close").clicked() {
+                                let devices_found_ptr = Arc::clone(&self.devices_found);
+
+                                run_async!(self, async move {
+                                    // This causes a race on the read block_on above but it's fast
+                                    // enought not to cause any issues
+                                    let mut devices_found = devices_found_ptr.write().await;
+                                    devices_found.clear();
+
+                                    true
+                                });
+                                return;
+                            }
+
+                            ui.vertical_centered(|ui| {
+                                ui.label("Devices found:");
+
+                                for device in devices_found.iter() {
+                                    let devices = Arc::clone(&devices);
+                                    let addr = device.address;
+                                    let btn = ui.button(format!("{} - {}", device.name, BluetoothAddr::new(addr)));
+
+                                    if btn.hovered() {
+                                        btn.show_tooltip_text("Pair to this device");
+                                    }
+
+                                    if btn.clicked() {
+                                        run_async!(self, async move {
+                                            let devices_read = devices.read().await;
+                                            if devices_read.get(&addr).is_some() {
+                                                return false;
+                                            }
+                                            drop(devices_read);
+
+                                            let mut devices = devices.write().await;
+                                            let mut device = HueDeviceWrapper::from_address(BluetoothAddr::new(addr));
+
+                                            match device.pair().await {
+                                                OutputCode::Success => {
+                                                    device.is_paired = true;
+                                                    device.is_found = true;
+                                                },
+                                                _ => {
+                                                    device.is_paired = false;
+                                                    device.is_found = false;
+                                                },
+                                            }
+
+                                            devices.insert(addr, device);
+                                            true
+                                        });
+                                    }
+                                }
+                            });
+                        });
+                    }
                 });
             });
 
@@ -226,7 +324,7 @@ impl eframe::App for App {
             }
 
             if ui.button("Power OFF all devices").clicked() {
-                self.channel = Some(run_async!(&self.tokio_rt, async {
+                run_async!(self, async {
                     let devices_read = devices.read().await;
                     let futures = devices_read
                         .iter()
@@ -241,12 +339,12 @@ impl eframe::App for App {
                     });
 
                     !res.into_iter().fold(true, |acc, v| !acc || !v.is_success())
-                }));
+                });
                 return;
             }
 
             if ui.button("Power ON all devices").clicked() {
-                self.channel = Some(run_async!(&self.tokio_rt, async {
+                run_async!(self, async {
                     let devices_read = devices.read().await;
                     let futures = devices_read
                         .iter()
@@ -261,12 +359,12 @@ impl eframe::App for App {
                     });
 
                     !res.into_iter().fold(true, |acc, v| !acc || !v.is_success())
-                }));
+                });
                 return;
             }
 
             if ui.button("Disconnect from all devices").clicked() {
-                self.channel = Some(run_async!(&self.tokio_rt, async {
+                run_async!(self, async {
                     let devices_read = devices.read().await;
                     let futures = devices_read
                         .iter()
@@ -281,12 +379,12 @@ impl eframe::App for App {
                     }
 
                     !res.into_iter().fold(true, |acc, v| !acc || !v.is_success())
-                }));
+                });
                 return;
             }
 
             if ui.button("Connect to all devices").clicked() {
-                self.channel = Some(run_async!(&self.tokio_rt, async {
+                run_async!(self, async {
                     let devices_read = devices.read().await;
                     let futures = devices_read
                         .iter()
@@ -301,7 +399,7 @@ impl eframe::App for App {
                     }
 
                     !res.into_iter().fold(true, |acc, v| !acc || !v.is_success())
-                }));
+                });
                 return;
             }
 
@@ -314,8 +412,37 @@ impl eframe::App for App {
                 }
                 ui.label(format!("Hex UUID: {:?}", addr));
 
+                if ui.button("Remove device").clicked() {
+                    let devices = Arc::clone(&devices);
+
+                    self.tokio_rt.spawn(async move {
+                        devices.write().await.remove(&addr);
+                    });
+                    return;
+                }
+
                 if !device.is_found {
                     ui.label("Device not found");
+
+                    if ui.button("Pair device").clicked() {
+                        run_async!(self, async move {
+                            let mut lock = devices.write().await;
+                            let device = lock.get_mut(&addr).unwrap();
+                            match device.pair().await {
+                                OutputCode::Success => {
+                                    device.is_paired = true;
+                                    device.is_found = true;
+                                    true
+                                }
+                                _ => {
+                                    device.is_paired = false;
+                                    device.is_found = false;
+                                    false
+                                }
+                            }
+                        });
+                        return;
+                    }
                     continue;
                 }
 
@@ -338,12 +465,12 @@ impl eframe::App for App {
                             brightness: _,
                         } = Xy::from(Rgb::new(r as _, g as _, b as _));
                         let device = device.clone();
-                        self.channel = Some(run_async!(&self.tokio_rt, async move {
+                        run_async!(self, async move {
                             device
                                 .set_colors(x as _, y as _, COLOR_RGB)
                                 .await
                                 .is_success()
-                        }));
+                        });
                     }
                     ui.label(format!("Current color is {:?}", device.current_color));
 
@@ -351,7 +478,7 @@ impl eframe::App for App {
                         if ui.button("Power OFF").clicked() {
                             let device = device.clone();
 
-                            self.channel = Some(run_async!(&self.tokio_rt, async move {
+                            run_async!(self, async move {
                                 let res = device.set_power(false).await.is_success();
                                 if res {
                                     let mut lock = devices.write().await;
@@ -359,13 +486,13 @@ impl eframe::App for App {
                                     device.power_state = false;
                                 }
                                 res
-                            }));
+                            });
                             return;
                         }
                     } else if ui.button("Power ON").clicked() {
                         let device = device.clone();
 
-                        self.channel = Some(run_async!(&self.tokio_rt, async move {
+                        run_async!(self, async move {
                             let res = device.set_power(true).await.is_success();
                             if res {
                                 let mut lock = devices.write().await;
@@ -373,14 +500,14 @@ impl eframe::App for App {
                                 device.power_state = true;
                             }
                             res
-                        }));
+                        });
                         return;
                     }
 
                     if ui.button("Disconnect from device").clicked() {
                         let device = device.clone();
 
-                        self.channel = Some(run_async!(&self.tokio_rt, async move {
+                        run_async!(self, async move {
                             let res = device.disconnect_device().await.is_success();
                             if res {
                                 let mut lock = devices.write().await;
@@ -388,13 +515,13 @@ impl eframe::App for App {
                                 update_device_state(device).await;
                             }
                             res
-                        }));
+                        });
                         return;
                     }
                 } else if ui.button("Connect to device").clicked() {
                     let device = device.clone();
 
-                    self.channel = Some(run_async!(&self.tokio_rt, async move {
+                    run_async!(self, async move {
                         let res = device.connect_device().await.is_success();
                         if res {
                             let mut lock = devices.write().await;
@@ -402,15 +529,6 @@ impl eframe::App for App {
                             update_device_state(device).await;
                         }
                         res
-                    }));
-                    return;
-                }
-
-                if ui.button("Remove device").clicked() {
-                    let devices = Arc::clone(&devices);
-
-                    self.tokio_rt.spawn(async move {
-                        devices.write().await.remove(&addr);
                     });
                     return;
                 }
@@ -478,8 +596,9 @@ fn parse_address(str: &str) -> Result<BluetoothAddr, String> {
 }
 
 async fn update_device_state(device: &mut HueDeviceWrapper) {
-    if let Ok(v) = device.is_connected().await {
-        device.is_connected = v;
+    let (res_conn, buf_conn) = device.is_connected().await;
+    if res_conn.is_success() {
+        device.is_connected = buf_conn[0] == 1;
     }
 
     if device.is_connected {

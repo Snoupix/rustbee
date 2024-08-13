@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{collections::HashMap, io::Error};
 
+use futures::stream::StreamExt as _;
 use interprocess::local_socket::{
     tokio::Stream, traits::tokio::Listener as _, ListenerNonblockingMode, ListenerOptions, ToFsName,
 };
@@ -33,6 +34,7 @@ enum Command {
     Brightness,
     Disconnect,
     Name,
+    SearchName,
 }
 
 /// converts Result<T, E> into SUCCESS or FAILURE (0 or 1)
@@ -123,8 +125,65 @@ async fn process_conn(
             let set = buf[8] == SET;
             let data = &buf[9..];
 
-            let mut success = [0; OUTPUT_LEN];
-            success[0] = u8::MAX;
+            // println!("{buf:?}");
+            // println!(
+            //     "addr: {:?} flags: {} set {} data: {:?}",
+            //     addr, flags, set, data
+            // );
+
+            let mut output_buf = [0; OUTPUT_LEN];
+            output_buf[0] = u8::MAX;
+
+            let mut commands = get_commands_from_flags(flags);
+
+            // Commands that are executed alone and only alone without the need to fetch the device
+            if commands.contains(&Command::SearchName) {
+                let name =
+                    String::from_utf8(data.iter().copied().filter(|c| *c != b'\0').collect())
+                        .unwrap();
+                let mut stream_iter = search_devices_by_name::<Server>(&name, 10).await.unwrap();
+                let mut device_sent = 0;
+
+                while let Some(device) = stream_iter.next().await {
+                    let mut buf = [0; OUTPUT_LEN];
+                    buf[0] = OutputCode::Streaming.into();
+
+                    let addr = *device.addr;
+                    for (i, byte) in addr.iter().enumerate() {
+                        buf[i + 1] = *byte;
+                    }
+
+                    for (i, byte) in device
+                        .name()
+                        .await
+                        .map_err(|_| Some(String::new()))
+                        .unwrap()
+                        .or_else(|| Some(String::new()))
+                        .unwrap()
+                        .as_bytes()
+                        .iter()
+                        .enumerate()
+                    {
+                        let offset = addr.len() + 1 + i;
+                        if offset >= buf.len() {
+                            break;
+                        }
+
+                        buf[offset] = *byte;
+                    }
+
+                    send_to_stream(&mut stream, buf).await;
+                    device_sent += 1;
+                }
+
+                if device_sent == 0 {
+                    send_output_code(&mut stream, OutputCode::DeviceNotFound).await;
+                    return;
+                }
+
+                send_output_code(&mut stream, OutputCode::StreamEOF).await;
+                return;
+            }
 
             let mut devices = devices.lock().await;
             if devices.get(&addr).is_none() {
@@ -134,10 +193,12 @@ async fn process_conn(
                 )
                 .await
                 {
-                    Err(_) => {
+                    Err(elapsed) => {
                         // Timed out
-                        eprintln!("[WARN] Timeout during device discovery, address: {addr:?}");
-                        return_error(&mut stream, OutputCode::DeviceNotFound).await;
+                        eprintln!(
+                            "[WARN] Timeout: {elapsed} during device discovery, address: {addr:?}"
+                        );
+                        send_output_code(&mut stream, OutputCode::DeviceNotFound).await;
                         return;
                     }
                     Ok(value) => {
@@ -145,16 +206,14 @@ async fn process_conn(
                             Ok(myb_device) => myb_device,
                             Err(err) => {
                                 eprintln!("[ERROR] Cannot get device, address: {addr:?} {err:?}");
-                                return_error(&mut stream, OutputCode::Failure).await;
+                                send_output_code(&mut stream, OutputCode::Failure).await;
                                 return;
                             }
                         };
 
-                        println!("after get_device {myb_device:?}");
-
                         let Some(device) = myb_device else {
-                            eprintln!("[WARN] Timeout during device discovery, address: {addr:?}");
-                            return_error(&mut stream, OutputCode::DeviceNotFound).await;
+                            eprintln!("[WARN] Device not found or not in range, address: {addr:?}");
+                            send_output_code(&mut stream, OutputCode::DeviceNotFound).await;
                             return;
                         };
 
@@ -187,29 +246,39 @@ async fn process_conn(
                 }
             }
 
-            // Since we're not mutating the device internally, only the hashmap, we can clone and
-            // free the lock
+            // Since we're not mutating the device internally, only the hashmap, we can clone the
+            // device and free the lock
             let hue_device = hue_device.clone();
             drop(devices);
 
-            let mut commands = get_commands_from_flags(flags);
+            // Priority commands
+            if commands.len() == 1 && commands[0] == Command::Connect && !set {
+                if let Ok(state) = hue_device.is_device_connected().await {
+                    output_buf[0] = OutputCode::Success.into();
+                    output_buf[1] = state as _;
+                } else {
+                    output_buf[0] = OutputCode::Failure.into();
+                }
 
+                send_to_stream(&mut stream, output_buf).await;
+                return;
+            }
             if commands.contains(&Command::Connect) {
                 let value = res_to_u8!(hue_device.try_connect().await);
-                success[0] = u8::min(success[0], value);
+                output_buf[0] = u8::min(output_buf[0], value);
                 commands.retain(|cmd| *cmd != Command::Connect);
             }
 
             for command in commands {
                 let value = match command {
-                    Command::Connect => continue,
+                    Command::Connect | Command::SearchName => continue,
                     Command::PairAndTrust => res_to_u8!(hue_device.try_pair().await),
                     Command::Disconnect => res_to_u8!(hue_device.try_disconnect().await),
                     Command::Power { .. } => {
                         if set {
                             res_to_u8!(hue_device.set_power(data[0]).await)
                         } else if let Ok(state) = hue_device.get_power().await {
-                            success[1] = state as _;
+                            output_buf[1] = state as _;
                             OutputCode::Success.into()
                         } else {
                             OutputCode::Failure.into()
@@ -219,7 +288,7 @@ async fn process_conn(
                         if set {
                             res_to_u8!(hue_device.set_brightness(data[0]).await)
                         } else if let Ok(v) = hue_device.get_brightness().await {
-                            success[1] = v as _;
+                            output_buf[1] = v as _;
                             OutputCode::Success.into()
                         } else {
                             OutputCode::Failure.into()
@@ -235,7 +304,7 @@ async fn process_conn(
                             res_to_u8!(hue_device.set_color(buf).await)
                         } else if let Ok(bytes) = hue_device.get_color().await {
                             for (i, byte) in bytes.iter().enumerate() {
-                                success[i + 1] = *byte;
+                                output_buf[i + 1] = *byte;
                             }
 
                             OutputCode::Success.into()
@@ -250,12 +319,12 @@ async fn process_conn(
                             if let Some(name_str) = opt.as_ref() {
                                 let len = name_str.len();
                                 for (i, byte) in name_str.bytes().take(OUTPUT_LEN - 1).enumerate() {
-                                    success[i + 1] = byte;
+                                    output_buf[i + 1] = byte;
                                 }
                                 if len > (OUTPUT_LEN - 1) {
-                                    success[OUTPUT_LEN - 3] = b'.';
-                                    success[OUTPUT_LEN - 2] = b'.';
-                                    success[OUTPUT_LEN - 1] = b'.';
+                                    output_buf[OUTPUT_LEN - 3] = b'.';
+                                    output_buf[OUTPUT_LEN - 2] = b'.';
+                                    output_buf[OUTPUT_LEN - 1] = b'.';
                                 }
                             }
                         }
@@ -263,26 +332,29 @@ async fn process_conn(
                         res_to_u8!(res)
                     }
                 };
-                success[0] = u8::min(success[0], value);
+                output_buf[0] = u8::min(output_buf[0], value);
 
                 // https://developers.meethue.com/develop/get-started-2/core-concepts/#limitations
                 sleep(Duration::from_millis(100)).await;
             }
 
-            if success[0] != u8::MAX {
-                stream.write_all(&success).await.unwrap();
-                stream.flush().await.unwrap();
+            if output_buf[0] != u8::MAX {
+                send_to_stream(&mut stream, output_buf).await;
             }
         }
         Err(error) => eprintln!("Error on connection: {error}"),
     }
 }
 
-async fn return_error(stream: &mut Stream, output_code: OutputCode) {
-    let mut buf = [0; OUTPUT_LEN];
-    buf[0] = output_code.into();
+async fn send_to_stream(stream: &mut Stream, buf: [u8; OUTPUT_LEN]) {
     stream.write_all(&buf).await.unwrap();
     stream.flush().await.unwrap();
+}
+
+async fn send_output_code(stream: &mut Stream, output_code: OutputCode) {
+    let mut buf = [0; OUTPUT_LEN];
+    buf[0] = output_code.into();
+    send_to_stream(stream, buf).await;
 }
 
 async fn check_if_path_is_writable() {
@@ -338,6 +410,9 @@ fn get_commands_from_flags(flags: MaskT) -> Vec<Command> {
     }
     if (flags >> (NAME - 1)) & 1 == 1 {
         v.push(Command::Name)
+    }
+    if (flags >> (SEARCH_NAME - 1)) & 1 == 1 {
+        v.push(Command::SearchName)
     }
 
     v
