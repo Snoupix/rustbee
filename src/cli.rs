@@ -5,7 +5,7 @@ use color_space::{FromRgb, Rgb, Xyz};
 
 use rustbee_common::bluetooth::{Client, HueDevice};
 use rustbee_common::colors::Xy;
-use rustbee_common::constants::{flags::*, MaskT, ADDR_LEN};
+use rustbee_common::constants::{masks::*, MaskT, ADDR_LEN};
 
 #[derive(Debug, Parser)]
 pub struct Args {
@@ -38,6 +38,8 @@ pub enum Command {
         value: Option<u8>,
     },
     Disconnect,
+    Gui,  // Only here for the CLI help
+    Logs, // Only here for the CLI help
 }
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
@@ -56,19 +58,27 @@ impl From<&Command> for MaskT {
             Command::ColorXy { .. } => COLOR_XY,
             Command::Brightness { .. } => BRIGHTNESS,
             Command::Disconnect => DISCONNECT,
+            command @ Command::Gui | command @ Command::Logs => {
+                panic!("Cannot use {command:?} command on the CLI script")
+            }
         }
     }
 }
 
 impl Command {
     pub async fn handle(&self, hue_device: HueDevice<Client>) -> bluer::Result<()> {
+        if matches!(self, Self::Gui | Self::Logs) {
+            // Should never occur since the bash script intercepts them
+            return Ok(());
+        }
+
         if !hue_device.pair().await.is_success() {
             eprintln!("Error: failed to pair and trust device {}", hue_device.addr);
             return Ok(());
         }
 
         match self {
-            Self::PairAndTrust => (),
+            Self::Gui | Self::Logs | Self::PairAndTrust => (),
             Self::Power { state } => match state {
                 Some(state) => {
                     if !hue_device

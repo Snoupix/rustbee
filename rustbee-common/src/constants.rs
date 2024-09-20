@@ -31,6 +31,8 @@ pub const OUTPUT_LEN: usize = 1 + 19; // 1 for output status code + 20 bytes out
 pub const DATA_LEN: usize = 10;
 pub const ADDR_LEN: usize = 6;
 
+pub const GUI_SAVE_INTERVAL_SECS: u64 = 60;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OutputCode {
     Success,

@@ -8,6 +8,10 @@ This project aims to control my Philips Hue lights without having to buy the *ex
 
 It will also later be used as a base for an [ESP32](https://www.espressif.com/en/products/socs/esp32) implementation to automate the control of my lights.
 
+## Disclaimer
+
+*While this section exists, it means that this project is in Work In Progress. I will do my best to push working states on the main branch but there will probably still have some kind of issues.*
+
 ## Compatibility/Requirements
 
 This project is built on [Arch linux](https://archlinux.org) *btw* thus it will not work on Windows neither WSL because the Bluetooth adapter is not (or hardly) available from WSL.
@@ -23,9 +27,9 @@ It might work on your Linux distro and maybe OSX if you have these required comm
 
 Optional if docker is installed and you wanna compile locally:
 - rustc >= 1.80
-- rustup cargo component (rustup component add cargo)
+- rustup cargo component (`rustup component add cargo`)
 
-## How to use
+## Build from source
 
 Note that you will need to enter your password, the bash script uses `sudo` to have permissions to create an IPC file socket at `/var/run` (which is root owned/protected), the log file at `/var/log` and if you're building with docker, it will compile root owned binaries so it will need your password at the end to change owner of these files.
 
@@ -38,16 +42,27 @@ Depending on your CPU, compiling this project may take you around 2mins with or 
 ./rustbee build gui
 # And you can also use the -d or --docker flag at the end of the command to use docker to compile
 
-# Then, to get the CLI commands available
-./rustbee help
+# Then, you can manually add the executables to your PATH or let rustbee do it for you (it will add a symlink to the bash script on /bin)
+./rustbee install
+```
+
+## How to use
+
+```bash
+# To get the CLI commands available
+rustbee help
 # Or you can launch the GUI
-./rustbee gui
+rustbee gui
 
-# If you just wanna stop the rustbee-daemon manually and close (delete) the file socket
-./rustbee shutdown
+# You can get the logs file path and use it as you wish (e.g. `rustbee logs | xargs cat` or `tail $(rustbee logs)`)
+rustbee logs
 
-# (rust/cargo required) If you wanna save space and not use the app anymore
-./rustbee clean_binaries
+# If you just wanna stop the rustbee-daemon manually and close (delete) the file socket and if for some reason it doesn't kill the process gracefully, you can use -f or --force to force kill the daemon
+rustbee shutdown
+
+# If you want to uninstall
+rustbee uninstall
+# And you can also add "--preserve-logs" to avoid removing logs file
 ```
 
 *On error: if you get "le-connection-abort-by-local" error, it's kind of usual, BLE is a bit weak so try again your last command, it will most likely work after an other try*
@@ -60,8 +75,11 @@ Depending on your CPU, compiling this project may take you around 2mins with or 
 1. rustbee-gui (bin): The GUI (Graphical User Interface) that can replace the CLI for a better UX and will also be a WASM module to use the browser instead of natiive GUI
 
 ### TODO
+
 - [ ] Migrate from unix domain socket to local_socket for interop
 - [ ] Migrate from bluez to bleplug for interop
+- [ ] Clarify CLI args (add descriptions)
+- [ ] When finished with GUI impl, try to impl WASM build target
 
 ----
 

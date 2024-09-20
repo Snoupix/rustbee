@@ -21,15 +21,12 @@ use tokio::{
 };
 use uuid::Uuid;
 
-use crate::constants::{
-    flags::{COLOR_HEX, COLOR_RGB},
-    masks::*,
-    *,
-};
+use crate::constants::{masks::*, *};
 
 const EMPTY_BUFFER: [u8; DATA_LEN + 1] = [0; DATA_LEN + 1];
+const ATTEMPTS: u8 = 3;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Hash)]
 pub struct FoundDevice {
     pub address: [u8; ADDR_LEN],
     pub name: String,
@@ -213,20 +210,20 @@ where
     }
 
     pub async fn try_connect(&self) -> bluer::Result<()> {
-        let mut retries = 3;
+        let mut retries = ATTEMPTS;
         loop {
             if self.is_connected().await? {
                 break;
             }
 
-            if retries <= 0 {
+            if retries == 0 {
                 eprintln!(
-                    "[ERROR] Failed to connect to {} after 3 attempts",
+                    "[ERROR] Failed to connect to {} after {ATTEMPTS} attempts",
                     self.addr
                 );
                 return Err(bluer::Error {
                     kind: bluer::ErrorKind::Failed,
-                    message: "Failed to disconnect after 3 attempts".into(),
+                    message: "Failed to connect after {ATTEMPTS} attempts".into(),
                 });
             }
 
@@ -242,20 +239,20 @@ where
     }
 
     pub async fn try_disconnect(&self) -> bluer::Result<()> {
-        let mut retries = 3;
+        let mut retries = ATTEMPTS;
         loop {
             if !self.is_connected().await? {
                 break;
             }
 
-            if retries <= 0 {
+            if retries == 0 {
                 eprintln!(
-                    "[ERROR] Failed to disconnect from {} after 3 attempts",
+                    "[ERROR] Failed to disconnect from {} after {ATTEMPTS} attempts",
                     self.addr
                 );
                 return Err(bluer::Error {
                     kind: bluer::ErrorKind::Failed,
-                    message: "Failed to disconnect after 3 attempts".into(),
+                    message: "Failed to disconnect after {ATTEMPTS} attempts".into(),
                 });
             }
 
@@ -273,7 +270,7 @@ where
     }
 
     pub async fn try_pair(&self) -> bluer::Result<()> {
-        let mut retries = 3;
+        let mut retries = ATTEMPTS;
         let mut error = None;
 
         if self.is_connected().await? {
@@ -281,14 +278,14 @@ where
         }
 
         while !self.is_paired().await? {
-            if retries <= 0 {
+            if retries == 0 {
                 eprintln!(
-                    "[ERROR] Failed to pair device {} after 3 attempts {:?}",
+                    "[ERROR] Failed to pair device {} after {ATTEMPTS} attempts {:?}",
                     self.addr, error
                 );
                 return Err(bluer::Error {
                     kind: bluer::ErrorKind::Failed,
-                    message: "Failed to pair device after 3 attempts".into(),
+                    message: "Failed to pair device after {ATTEMPTS} attempts".into(),
                 });
             }
             error = match self.pair().await {
@@ -298,17 +295,17 @@ where
             retries -= 1;
         }
 
-        retries = 2;
+        retries = ATTEMPTS;
         error = None;
         while !self.is_trusted().await? {
-            if retries <= 0 {
+            if retries == 0 {
                 eprintln!(
-                    "[ERROR] Failed to \"trust\" device {} after 3 attempts {:?}",
+                    "[ERROR] Failed to \"trust\" device {} after {ATTEMPTS} attempts {:?}",
                     self.addr, error
                 );
                 return Err(bluer::Error {
                     kind: bluer::ErrorKind::Failed,
-                    message: "Failed to trust device after 3 attempts".into(),
+                    message: "Failed to trust device after {ATTEMPTS} attempts".into(),
                 });
             }
             error = match self.set_trusted(true).await {
@@ -395,6 +392,14 @@ where
     pub async fn get_name(&self) -> bluer::Result<Option<String>> {
         self.name().await
     }
+
+    pub async fn connect_to_profile(&self, uuid: &Uuid) -> bluer::Result<()> {
+        self.connect_profile(uuid).await
+    }
+
+    pub async fn disconnect_from_profile(&self, uuid: &Uuid) -> bluer::Result<()> {
+        self.disconnect_profile(uuid).await
+    }
 }
 
 type CmdOutput = (OutputCode, [u8; OUTPUT_LEN - 1]);
@@ -452,23 +457,19 @@ where
         buf[3] = (scaled_y & 0xFF) as _;
         buf[4] = (scaled_y >> 8) as _;
 
+        println!("{scaled_x} {scaled_y} {buf:?}");
+
         self.send_packet_to_daemon(CONNECT | color_mask, buf)
             .await
             .0
     }
 
     pub async fn get_name(&self) -> CmdOutput {
-        let mut buf = EMPTY_BUFFER;
-        buf[0] = GET;
-
-        self.send_packet_to_daemon(CONNECT, buf).await
+        self.send_packet_to_daemon(NAME, EMPTY_BUFFER).await
     }
 
     pub async fn is_connected(&self) -> CmdOutput {
-        let mut buf = EMPTY_BUFFER;
-        buf[0] = GET;
-
-        self.send_packet_to_daemon(CONNECT, buf).await
+        self.send_packet_to_daemon(CONNECT, EMPTY_BUFFER).await
     }
 
     pub async fn search_by_name(
@@ -543,7 +544,9 @@ where
     }
 
     pub async fn connect_device(&self) -> OutputCode {
-        self.send_packet_to_daemon(CONNECT, EMPTY_BUFFER).await.0
+        let mut buf = EMPTY_BUFFER;
+        buf[0] = SET;
+        self.send_packet_to_daemon(CONNECT, buf).await.0
     }
 
     async fn get_file_socket() -> Stream {
@@ -662,6 +665,7 @@ where
         },
     );
 
+    // TODO: Try to remove duplicates
     Ok(Box::pin(stream.filter(|hue_device| {
         future::ready(hue_device.device.is_some())
     })))

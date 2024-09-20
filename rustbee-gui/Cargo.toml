@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-eframe = "0.28.1"
+eframe = { version = "0.28.1", features = ["persistence"] }
+egui_extras = { version = "0.28.1", features = ["all_loaders"] }
 futures = "0.3.30"
 rustbee-common = { path = "../rustbee-common" }
+serde = "1.0.207"
+serde_json = "1.0.125"
 tokio = { version = "1.39.2", features = ["rt", "rt-multi-thread", "sync"] }

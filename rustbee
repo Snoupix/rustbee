@@ -2,6 +2,14 @@
 
 MSRV="1.80"
 
+script_path="${BASH_SOURCE[0]}"
+while [[ -h "$script_path" ]]; do
+    script_dir="$(cd "$(dirname "$script_path")" && pwd)"
+    script_path="$(readlink "$script_path")"
+    [[ $script_path != /* ]] && script_path="$script_dir/$script_path"
+done
+cd $(dirname "$script_path")
+
 docker=false
 docker_base_pkgs="(apt-get update && apt-get install -y libdbus-1-dev pkg-config) > /dev/null 2>&1"
 log_path=/var/log/rustbee-daemon.log
@@ -64,6 +72,74 @@ build_gui() {
     echo "Done! You can now run \`rustbee gui\` to launch the GUI"
 }
 
+run_daemon() {
+    (bluetooth | grep "bluetooth = off") > /dev/null 2>&1
+    if [[ $? == 0 ]]; then
+        bluetooth on > /dev/null 2>&1 && sleep 2
+    fi
+
+    pgrep rustbee-daemon > /dev/null 2>&1
+    if [[ $? == 1 ]]; then
+        status=0
+        sudo rm $log_path > /dev/null 2>&1
+        set -e
+        sudo touch $log_path
+        sudo chown $(id -u):$(id -g) $log_path
+        sudo chmod 755 $log_path
+        # TODO: Use a logger for cleaner logs and append (>>) instead of overwrite it (>)
+        (sudo ./rustbee-daemon/target/release/rustbee-daemon > $log_path 2>&1) &
+        pid=$!
+        sleep 1 # Random low waiting time to check if the bg process has stopped and returned a status code
+        kill -0 $pid > /dev/null 2>&1
+        if [[ $? == 1 ]]; then
+            wait $pid
+            status=$?
+        fi
+        if [[ $status > 0 ]]; then
+            if [[ $status == 2 ]]; then
+                echo "Run \`rustbee shutdown\` to stop running process and delete the socket"
+            fi
+
+            exit 1
+        fi
+    fi
+
+    # The file socket must be owned by the user else the gui cannot access it and running the cli/gui as sudo must be avoided
+    sudo chown $(id -u):$(id -g) $socket_path
+}
+
+# Dev mode
+is_debug() {
+    [[ $2 == "debug" ]] && return 0 || return 1
+}
+
+run_cli() {
+    if [[ ! -f ./target/release/rustbee || ! -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
+        echo "Binaries are not built, you must run \`rustbee build cli\` first"
+        exit 1
+    fi
+
+    run_daemon
+
+    exec ./target/release/rustbee $@
+}
+
+run_gui() {
+    if [[ ! -f ./rustbee-gui/target/release/rustbee-gui || ! -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
+        echo "Binaries are not built, you must run \`rustbee build gui\` first"
+        exit 1
+    fi
+
+    run_daemon
+
+    if is_debug $@; then
+        cd rustbee-gui
+        cargo watch -d 1.5 -x build -s ./target/debug/rustbee-gui
+    else
+        exec ./rustbee-gui/target/release/rustbee-gui
+    fi
+}
+
 
 
 case $1 in
@@ -75,12 +151,25 @@ case $1 in
             sudo rm -f $socket_path
         fi
     ;;
-    "clean_binaries")
-        cargo clean
+    "logs")
+        echo -n $log_path
+    ;;
+    "install")
+        sudo ln -sf $PWD/rustbee /bin/rustbee
+        echo "Rustbee is successfully installed, you can start using it by typing \`rustbee help\`"
+    ;;
+    "uninstall")
+        sudo rm /bin/rustbee > /dev/null 2>&1
+        cargo clean > /dev/null 2>&1
         cd rustbee-daemon
-        cargo clean
+        cargo clean > /dev/null 2>&1
         cd ../rustbee-gui
-        cargo clean
+        cargo clean > /dev/null 2>&1
+
+        if [[ $2 != "--preserve-logs" ]]; then
+            sudo rm $log_path > /dev/null 2>&1
+        fi
+        echo "Rustbee is successfully uninstalled"
     ;;
     "build")
         if [[ $3 == "--docker" || $3 == "-d" ]]; then
@@ -102,71 +191,11 @@ case $1 in
             ;;
         esac
     ;;
-    "build_gui_windows") # experimental stuff
-        cd rustbee-gui
-        windows_build_cmds=$(cat <<- EOF
-            export PKG_CONFIG_SYSROOT_DIR=/
-            apt-get update &&
-            apt-get install -y libdbus-1-dev pkg-config g++-mingw-w64-x86-64 &&
-            rustup target add x86_64-pc-windows-gnu &&
-            rustup toolchain install stable-x86_64-pc-windows-gnu &&
-            cargo build --release --target x86_64-pc-windows-gnu
-EOF
-)
-        docker run --rm --user root -v "$PWD":/usr/src/rustbee -w /usr/src/rustbee rust:$MSRV bash -c "$windows_build_cmds"
-    ;;
-    "gui" | *)
-        if [[ $1 == "gui" && ! -f ./rustbee-gui/target/release/rustbee-gui || ! -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
-            echo "Binaries are not built, you must run \`rustbee build gui\` first"
-            exit 1
-        fi
-
-        if [[ $1 != "gui" && ! -f ./target/release/rustbee || ! -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
-            echo "Binaries are not built, you must run \`rustbee build cli\` first"
-            exit 1
-        fi
-
-        (bluetooth | grep "bluetooth = off") > /dev/null 2>&1
-        if [[ $? == 0 ]]; then
-            bluetooth on > /dev/null 2>&1 && sleep 2
-        fi
-
-        pgrep rustbee-daemon > /dev/null 2>&1
-        if [[ $? == 1 ]]; then
-            status=0
-            sudo rm $log_path > /dev/null 2>&1
-            set -e
-            sudo touch $log_path
-            sudo chown $(id -u):$(id -g) $log_path
-            sudo chmod 755 $log_path
-            (sudo ./rustbee-daemon/target/release/rustbee-daemon > $log_path 2>&1) &
-            pid=$!
-            sleep 1 # Random low waiting time to check if the bg process has stopped and returned a status code
-            kill -0 $pid > /dev/null 2>&1
-            if [[ $? == 1 ]]; then
-                wait $pid
-                status=$?
-            fi
-            if [[ $status > 0 ]]; then
-                if [[ $status == 2 ]]; then
-                    echo "Run \`rustbee shutdown\` to stop running process and delete the socket"
-                fi
-
-                exit 1
-            fi
-        fi
-
-        # The file socket must be owned by the user else the gui cannot access it and running the cli/gui as sudo must be avoided
-        sudo chown $(id -u):$(id -g) $socket_path
-
-        # TODO Change GUI from debug to release
+    *)
         if [[ $1 == "gui" ]]; then
-            cd rustbee-gui
-            cargo build
-            exec ./target/debug/rustbee-gui
-            # exec ./rustbee-gui/target/release/rustbee-gui
+            run_gui $@
         else
-            exec ./target/release/rustbee $@
+            run_cli $@
         fi
     ;;
 esac

@@ -81,15 +81,12 @@ async fn main() {
         tokio::select! {
             _ = signal::ctrl_c() => break,
             timeout = time::timeout(Duration::from_secs(TIMEOUT_SECS), listener.accept()) => {
-                if timeout.is_err() {
+                let Ok(conn) = timeout else {
+                    // Timed out
                     break;
-                }
+                };
 
-                let devices = Arc::clone(&devices);
-
-                tokio::spawn(async move {
-                    process_conn(timeout.unwrap(), devices).await;
-                });
+                tokio::spawn(process_conn(conn, Arc::clone(&devices)));
             }
         }
     }
@@ -126,16 +123,17 @@ async fn process_conn(
             let set = buf[8] == SET;
             let data = &buf[9..];
 
+            let mut output_buf = [0; OUTPUT_LEN];
+            output_buf[0] = u8::MAX;
+
+            let mut commands = get_commands_from_flags(flags);
+
             // println!("{buf:?}");
             // println!(
             //     "addr: {:?} flags: {} set {} data: {:?}",
             //     addr, flags, set, data
             // );
-
-            let mut output_buf = [0; OUTPUT_LEN];
-            output_buf[0] = u8::MAX;
-
-            let mut commands = get_commands_from_flags(flags);
+            // println!("{addr:?} {commands:?}");
 
             // Commands that are executed alone and only alone without the need to fetch the device
             if commands.contains(&Command::SearchName) {
@@ -222,7 +220,22 @@ async fn process_conn(
                     }
                 }
             }
+
             let hue_device = devices.get_mut(&addr).unwrap();
+
+            // If we only need to get connect status, avoid connecting to set services
+            if commands.len() == 1 && commands[0] == Command::Connect && !set {
+                if let Ok(state) = hue_device.is_device_connected().await {
+                    output_buf[0] = OutputCode::Success.into();
+                    output_buf[1] = state as _;
+                } else {
+                    output_buf[0] = OutputCode::Failure.into();
+                }
+
+                send_to_stream(&mut stream, output_buf).await;
+                return;
+            }
+
             if hue_device.services.is_none() {
                 if let Err(error) = hue_device.try_pair().await {
                     eprintln!(
@@ -252,18 +265,7 @@ async fn process_conn(
             let hue_device = hue_device.clone();
             drop(devices);
 
-            // Priority commands
-            if commands.len() == 1 && commands[0] == Command::Connect && !set {
-                if let Ok(state) = hue_device.is_device_connected().await {
-                    output_buf[0] = OutputCode::Success.into();
-                    output_buf[1] = state as _;
-                } else {
-                    output_buf[0] = OutputCode::Failure.into();
-                }
-
-                send_to_stream(&mut stream, output_buf).await;
-                return;
-            }
+            // Priority command
             if commands.contains(&Command::Connect) {
                 let value = res_to_u8!(hue_device.try_connect().await);
                 output_buf[0] = u8::min(output_buf[0], value);
@@ -316,17 +318,15 @@ async fn process_conn(
                     Command::Name => {
                         let res = hue_device.get_name().await;
 
-                        if let Ok(ref opt) = res {
-                            if let Some(name_str) = opt.as_ref() {
-                                let len = name_str.len();
-                                for (i, byte) in name_str.bytes().take(OUTPUT_LEN - 1).enumerate() {
-                                    output_buf[i + 1] = byte;
-                                }
-                                if len > (OUTPUT_LEN - 1) {
-                                    output_buf[OUTPUT_LEN - 3] = b'.';
-                                    output_buf[OUTPUT_LEN - 2] = b'.';
-                                    output_buf[OUTPUT_LEN - 1] = b'.';
-                                }
+                        if let Ok(Some(ref name_str)) = res {
+                            let len = name_str.len();
+                            for (i, byte) in name_str.bytes().take(OUTPUT_LEN - 1).enumerate() {
+                                output_buf[i + 1] = byte;
+                            }
+                            if len > (OUTPUT_LEN - 1) {
+                                output_buf[OUTPUT_LEN - 3] = b'.';
+                                output_buf[OUTPUT_LEN - 2] = b'.';
+                                output_buf[OUTPUT_LEN - 1] = b'.';
                             }
                         }
 
