@@ -21,10 +21,10 @@ badd +11 Cargo.toml
 badd +6 rustbee-common/src/lib.rs
 badd +34 rustbee-common/src/constants.rs
 badd +27 src/main.rs
-badd +219 rustbee-daemon/src/main.rs
+badd +1 rustbee-daemon/src/main.rs
 badd +130 rustbee-common/src/colors.rs
 badd +546 rustbee-common/src/bluetooth.rs
-badd +8 rustbee-gui/Cargo.toml
+badd +12 rustbee-gui/Cargo.toml
 badd +61 src/cli.rs
 badd +1 rustbee-common/Cargo.toml
 badd +18 rustbee-common/src/tests.rs
@@ -39,7 +39,7 @@ set winheight=1
 set winminwidth=0
 set winwidth=1
 argglobal
-balt rustbee
+balt rustbee-common/src/bluetooth.rs
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -71,7 +71,6 @@ if filereadable(s:sx)
   exe "source " . fnameescape(s:sx)
 endif
 let &g:so = s:so_save | let &g:siso = s:siso_save
-nohlsearch
 doautoall SessionLoadPost
 unlet SessionLoad
 " vim: set ft=vim :

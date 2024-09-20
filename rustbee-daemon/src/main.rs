@@ -21,7 +21,7 @@ use rustbee_common::constants::{
     MaskT, OutputCode, ADDR_LEN, BUFFER_LEN, OUTPUT_LEN, SET, SOCKET_PATH,
 };
 
-const TIMEOUT_SECS: u64 = 60 * 5;
+const TIMEOUT_SECS: u64 = 60 * 2;
 const FOUND_DEVICE_TIMEOUT_SECS: u64 = 30;
 
 #[derive(Debug, PartialEq)]
