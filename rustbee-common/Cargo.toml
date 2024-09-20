@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 bluer = { version = "0.17.1", features = ["full"] }
+btleplug = "0.11.5"
 color_space = "0.5.4"
 futures = "0.3.30"
 interprocess = { version = "2.2.0", features = ["tokio"] }

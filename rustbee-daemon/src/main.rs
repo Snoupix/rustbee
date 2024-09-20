@@ -20,6 +20,7 @@ use rustbee_common::bluetooth::*;
 use rustbee_common::constants::{
     MaskT, OutputCode, ADDR_LEN, BUFFER_LEN, OUTPUT_LEN, SET, SOCKET_PATH,
 };
+use rustbee_common::BluetoothPeripheral as _;
 
 const TIMEOUT_SECS: u64 = 60 * 2;
 const FOUND_DEVICE_TIMEOUT_SECS: u64 = 30;
@@ -147,13 +148,13 @@ async fn process_conn(
                     let mut buf = [0; OUTPUT_LEN];
                     buf[0] = OutputCode::Streaming.into();
 
-                    let addr = *device.addr;
+                    let addr = device.addr.into_inner();
                     for (i, byte) in addr.iter().enumerate() {
                         buf[i + 1] = *byte;
                     }
 
                     for (i, byte) in device
-                        .name()
+                        .get_name()
                         .await
                         .map_err(|_| Some(String::new()))
                         .unwrap()
@@ -236,15 +237,15 @@ async fn process_conn(
                 return;
             }
 
-            if hue_device.services.is_none() {
-                if let Err(error) = hue_device.try_pair().await {
-                    eprintln!(
-                        "Unexpected error trying to pair with device {}: {error}",
-                        hue_device.addr
-                    );
-                    devices.remove(&addr).unwrap();
-                    return;
-                }
+            if hue_device.services().is_empty() {
+                // if let Err(error) = hue_device.try_pair().await {
+                //     eprintln!(
+                //         "Unexpected error trying to pair with device {}: {error}",
+                //         hue_device.addr
+                //     );
+                //     devices.remove(&addr).unwrap();
+                //     return;
+                // }
                 if let Err(error) = hue_device.try_connect().await {
                     eprintln!(
                         "Unexpected error trying to connect with device {}: {error}",
@@ -253,7 +254,7 @@ async fn process_conn(
                     devices.remove(&addr).unwrap();
                     return;
                 }
-                if let Err(error) = hue_device.set_services().await {
+                if let Err(error) = hue_device.discover_services().await {
                     eprintln!("Unexpected error trying get GATT characteristics and services with device {}: {error}", hue_device.addr);
                     devices.remove(&addr).unwrap();
                     return;
@@ -275,7 +276,7 @@ async fn process_conn(
             for command in commands {
                 let value = match command {
                     Command::Connect | Command::SearchName => continue,
-                    Command::PairAndTrust => res_to_u8!(hue_device.try_pair().await),
+                    Command::PairAndTrust => OutputCode::Success.into(), // res_to_u8!(hue_device.try_pair().await),
                     Command::Disconnect => res_to_u8!(hue_device.try_disconnect().await),
                     Command::Power { .. } => {
                         if set {

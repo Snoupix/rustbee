@@ -66,7 +66,7 @@ impl From<&Command> for MaskT {
 }
 
 impl Command {
-    pub async fn handle(&self, hue_device: HueDevice<Client>) -> bluer::Result<()> {
+    pub async fn handle(&self, hue_device: HueDevice<Client>) -> btleplug::Result<()> {
         if matches!(self, Self::Gui | Self::Logs) {
             // Should never occur since the bash script intercepts them
             return Ok(());

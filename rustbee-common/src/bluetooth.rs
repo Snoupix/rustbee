@@ -5,10 +5,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use bluer::{
-    gatt::remote::{Characteristic as BlueCharacteristic, Service as BlueService},
-    AdapterEvent, Address, Device, Session,
-};
+use btleplug::api::{BDAddr, Central, CentralEvent, Manager as _, Peripheral as _, WriteType};
+use btleplug::platform::{Manager, Peripheral};
 use futures::{future, stream, StreamExt};
 use interprocess::{
     local_socket::{tokio::Stream, traits::tokio::Stream as _, ToFsName as _},
@@ -26,6 +24,17 @@ use crate::constants::{masks::*, *};
 const EMPTY_BUFFER: [u8; DATA_LEN + 1] = [0; DATA_LEN + 1];
 const ATTEMPTS: u8 = 3;
 
+#[derive(Debug)]
+pub struct Error(pub String);
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for Error {}
+
 #[derive(Debug, Default, Hash)]
 pub struct FoundDevice {
     pub address: [u8; ADDR_LEN],
@@ -39,9 +48,8 @@ pub struct Server;
 
 #[derive(Clone, Debug)]
 pub struct HueDevice<Type> {
-    pub addr: Address,
-    pub device: Option<Device>,
-    pub services: Option<Vec<Service>>,
+    pub addr: BDAddr,
+    pub device: Option<Peripheral>,
     _type: PhantomData<Type>,
 }
 
@@ -50,7 +58,6 @@ impl Default for HueDevice<Server> {
         Self {
             addr: Default::default(),
             device: Default::default(),
-            services: Default::default(),
             _type: Default::default(),
         }
     }
@@ -60,47 +67,15 @@ impl Default for HueDevice<Client> {
         Self {
             addr: Default::default(),
             device: Default::default(),
-            services: Default::default(),
             _type: Default::default(),
         }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Service {
-    pub uuid: Uuid,
-    pub id: u16,
-    pub characteristics: Vec<Characteristic>,
-    pub inner: BlueService,
-}
-
-#[derive(Clone, Debug)]
-pub struct Characteristic {
-    pub uuid: Uuid,
-    pub id: u16,
-    pub inner: BlueCharacteristic,
-}
-
-impl Deref for Service {
-    type Target = BlueService;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl Deref for Characteristic {
-    type Target = BlueCharacteristic;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
     }
 }
 
 // The client doesn't use the bluetooth struct so only the server needs to deref since the client
 // device field should always be None
 impl Deref for HueDevice<Server> {
-    type Target = Device;
+    type Target = Peripheral;
 
     /// Be sure to use it wisely since it NEEDS to have the device set
     fn deref(&self) -> &Self::Target {
@@ -112,14 +87,14 @@ impl<T> HueDevice<T>
 where
     HueDevice<T>: Default + std::fmt::Debug,
 {
-    pub fn new(addr: Address) -> Self {
+    pub fn new(addr: BDAddr) -> Self {
         Self {
             addr,
             ..Default::default()
         }
     }
 
-    pub fn new_with_device(addr: Address, device: Device) -> Self {
+    pub fn new_with_device(addr: BDAddr, device: Peripheral) -> Self {
         Self {
             addr,
             device: Some(device),
@@ -127,7 +102,7 @@ where
         }
     }
 
-    pub fn set_device(&mut self, device: Device) {
+    pub fn set_device(&mut self, device: Peripheral) {
         self.device = Some(device);
     }
 
@@ -138,49 +113,16 @@ where
 
 impl HueDevice<Server>
 where
-    HueDevice<Server>: Default + Deref<Target = Device> + std::fmt::Debug,
+    HueDevice<Server>: Default + Deref<Target = Peripheral> + std::fmt::Debug,
 {
-    pub async fn set_services(&mut self) -> bluer::Result<()> {
-        let mut services = Vec::new();
-
-        for service in self.services().await? {
-            let mut characs = Vec::new();
-            for charac in service.characteristics().await? {
-                characs.push(Characteristic {
-                    uuid: charac.uuid().await?,
-                    id: charac.id(),
-                    inner: charac,
-                });
-            }
-
-            services.push(Service {
-                uuid: service.uuid().await?,
-                id: service.id(),
-                characteristics: characs,
-                inner: service,
-            });
-
-            sleep(Duration::from_millis(150)).await;
-        }
-
-        self.services = Some(services);
-        Ok(())
-    }
-
     pub async fn read_gatt_char(
         &self,
         service: &Uuid,
         charac: &Uuid,
-    ) -> bluer::Result<Option<Vec<u8>>> {
-        if let Some(service) = self
-            .services
-            .as_ref()
-            .unwrap()
-            .iter()
-            .find(|&s| &s.uuid == service)
-        {
+    ) -> btleplug::Result<Option<Vec<u8>>> {
+        if let Some(service) = self.services().iter().find(|&s| &s.uuid == service) {
             if let Some(charac) = service.characteristics.iter().find(|&c| &c.uuid == charac) {
-                return Ok(Some(charac.read().await?));
+                return Ok(Some(self.read(charac).await?));
             }
         }
 
@@ -192,16 +134,11 @@ where
         service: &Uuid,
         charac: &Uuid,
         bytes: &[u8],
-    ) -> bluer::Result<bool> {
-        if let Some(service) = self
-            .services
-            .as_ref()
-            .unwrap()
-            .iter()
-            .find(|&s| &s.uuid == service)
-        {
+    ) -> btleplug::Result<bool> {
+        if let Some(service) = self.services().iter().find(|&s| &s.uuid == service) {
             if let Some(charac) = service.characteristics.iter().find(|&c| &c.uuid == charac) {
-                charac.write(bytes).await?;
+                self.write(charac, bytes, WriteType::WithoutResponse)
+                    .await?;
                 return Ok(true);
             }
         }
@@ -209,7 +146,7 @@ where
         Ok(false)
     }
 
-    pub async fn try_connect(&self) -> bluer::Result<()> {
+    pub async fn try_connect(&self) -> btleplug::Result<()> {
         let mut retries = ATTEMPTS;
         loop {
             if self.is_connected().await? {
@@ -221,10 +158,9 @@ where
                     "[ERROR] Failed to connect to {} after {ATTEMPTS} attempts",
                     self.addr
                 );
-                return Err(bluer::Error {
-                    kind: bluer::ErrorKind::Failed,
-                    message: "Failed to connect after {ATTEMPTS} attempts".into(),
-                });
+                return Err(btleplug::Error::Other(Box::new(Error(format!(
+                    "Failed to connect after {ATTEMPTS} attempts"
+                )))));
             }
 
             if let Err(error) = self.connect().await {
@@ -238,7 +174,7 @@ where
         Ok(())
     }
 
-    pub async fn try_disconnect(&self) -> bluer::Result<()> {
+    pub async fn try_disconnect(&self) -> btleplug::Result<()> {
         let mut retries = ATTEMPTS;
         loop {
             if !self.is_connected().await? {
@@ -250,10 +186,9 @@ where
                     "[ERROR] Failed to disconnect from {} after {ATTEMPTS} attempts",
                     self.addr
                 );
-                return Err(bluer::Error {
-                    kind: bluer::ErrorKind::Failed,
-                    message: "Failed to disconnect after {ATTEMPTS} attempts".into(),
-                });
+                return Err(btleplug::Error::Other(Box::new(Error(format!(
+                    "Failed to disconnect after {ATTEMPTS} attempts"
+                )))));
             }
 
             if let Err(error) = self.disconnect().await {
@@ -269,102 +204,98 @@ where
         Ok(())
     }
 
-    pub async fn try_pair(&self) -> bluer::Result<()> {
-        let mut retries = ATTEMPTS;
-        let mut error = None;
+    // pub async fn try_pair(&self) -> btleplug::Result<()> {
+    //     let mut retries = ATTEMPTS;
+    //     let mut error = None;
+    //
+    //     if self.is_connected().await? {
+    //         return Ok(());
+    //     }
+    //
+    //     while !self.is_paired().await? {
+    //         if retries == 0 {
+    //             eprintln!(
+    //                 "[ERROR] Failed to pair device {} after {ATTEMPTS} attempts {:?}",
+    //                 self.addr, error
+    //             );
+    //             return Err(btleplug::Error::Other(Box::new(Error(format!(
+    //                 "Failed to pair device after {ATTEMPTS} attempts"
+    //             )))));
+    //         }
+    //         error = match self.pair().await {
+    //             Ok(_) => break,
+    //             Err(err) => Some(err),
+    //         };
+    //         retries -= 1;
+    //     }
+    //
+    //     retries = ATTEMPTS;
+    //     error = None;
+    //     while !self.is_trusted().await? {
+    //         if retries == 0 {
+    //             eprintln!(
+    //                 "[ERROR] Failed to \"trust\" device {} after {ATTEMPTS} attempts {:?}",
+    //                 self.addr, error
+    //             );
+    //             return Err(btleplug::Error::Other(Box::new(Error(format!(
+    //                 "Failed to trust device after {ATTEMPTS} attempts"
+    //             )))));
+    //         }
+    //         error = match self.set_trusted(true).await {
+    //             Ok(_) => break,
+    //             Err(err) => Some(err),
+    //         };
+    //         retries -= 1;
+    //     }
+    //
+    //     Ok(())
+    // }
 
-        if self.is_connected().await? {
-            return Ok(());
-        }
-
-        while !self.is_paired().await? {
-            if retries == 0 {
-                eprintln!(
-                    "[ERROR] Failed to pair device {} after {ATTEMPTS} attempts {:?}",
-                    self.addr, error
-                );
-                return Err(bluer::Error {
-                    kind: bluer::ErrorKind::Failed,
-                    message: "Failed to pair device after {ATTEMPTS} attempts".into(),
-                });
-            }
-            error = match self.pair().await {
-                Ok(_) => break,
-                Err(err) => Some(err),
-            };
-            retries -= 1;
-        }
-
-        retries = ATTEMPTS;
-        error = None;
-        while !self.is_trusted().await? {
-            if retries == 0 {
-                eprintln!(
-                    "[ERROR] Failed to \"trust\" device {} after {ATTEMPTS} attempts {:?}",
-                    self.addr, error
-                );
-                return Err(bluer::Error {
-                    kind: bluer::ErrorKind::Failed,
-                    message: "Failed to trust device after {ATTEMPTS} attempts".into(),
-                });
-            }
-            error = match self.set_trusted(true).await {
-                Ok(_) => break,
-                Err(err) => Some(err),
-            };
-            retries -= 1;
-        }
-
-        Ok(())
-    }
-
-    pub async fn is_device_connected(&self) -> bluer::Result<bool> {
+    pub async fn is_device_connected(&self) -> btleplug::Result<bool> {
         (*self).is_connected().await
     }
 
-    pub async fn get_power(&self) -> bluer::Result<bool> {
+    pub async fn get_power(&self) -> btleplug::Result<bool> {
         let read = self
             .read_gatt_char(&LIGHT_SERVICES_UUID, &POWER_UUID)
             .await?;
         if let Some(bytes) = read {
             Ok(*bytes.first().unwrap() == true as _)
         } else {
-            Err(bluer::Error {
-                kind: bluer::ErrorKind::InvalidArguments,
-                message: format!("[ERROR] Service or Characteristic \"{POWER_UUID}\" for \"{LIGHT_SERVICES_UUID}\" not found for device {}", self.addr)
-            })
+            Err(btleplug::Error::Other(Box::new(Error (
+                format!("[ERROR] Service or Characteristic \"{POWER_UUID}\" for \"{LIGHT_SERVICES_UUID}\" not found for device {}", self.addr)
+            ))))
         }
     }
 
-    pub async fn set_power(&self, value: u8) -> bluer::Result<()> {
+    pub async fn set_power(&self, value: u8) -> btleplug::Result<()> {
         self.write_gatt_char(&LIGHT_SERVICES_UUID, &POWER_UUID, &[value])
             .await?;
 
         Ok(())
     }
 
-    pub async fn get_brightness(&self) -> bluer::Result<f32> {
+    pub async fn get_brightness(&self) -> btleplug::Result<f32> {
         let read = self
             .read_gatt_char(&LIGHT_SERVICES_UUID, &BRIGHTNESS_UUID)
             .await?;
         if let Some(bytes) = read {
             Ok(*bytes.first().unwrap() as f32)
         } else {
-            Err(bluer::Error {
-                kind: bluer::ErrorKind::InvalidArguments,
-                message: format!("[ERROR] Service or Characteristic \"{BRIGHTNESS_UUID}\" for \"{LIGHT_SERVICES_UUID}\" not found for device {}", self.addr)
-            })
+            Err(btleplug::Error::Other(Box::new(Error(
+                format!("[ERROR] Service or Characteristic \"{BRIGHTNESS_UUID}\" for \"{LIGHT_SERVICES_UUID}\" not found for device {}", self.addr)
+            ))))
         }
     }
 
-    pub async fn set_brightness(&self, value: u8) -> bluer::Result<()> {
+    pub async fn set_brightness(&self, value: u8) -> btleplug::Result<()> {
         self.write_gatt_char(&LIGHT_SERVICES_UUID, &BRIGHTNESS_UUID, &[value])
             .await?;
 
         Ok(())
     }
 
-    pub async fn get_color(&self) -> bluer::Result<[u8; 4]> {
+    pub async fn get_color(&self) -> btleplug::Result<[u8; 4]> {
         let mut buf = [0u8; 4];
         if let Some(bytes) = self
             .read_gatt_char(&LIGHT_SERVICES_UUID, &COLOR_UUID)
@@ -375,30 +306,25 @@ where
 
             Ok(buf)
         } else {
-            Err(bluer::Error {
-                kind: bluer::ErrorKind::InvalidArguments,
-                message: format!("[ERROR] Service or Characteristic \"{COLOR_UUID}\" for \"{LIGHT_SERVICES_UUID}\" not found for device {}", self.addr)
-            })
+            Err(btleplug::Error::Other(Box::new(Error(
+                format!("[ERROR] Service or Characteristic \"{COLOR_UUID}\" for \"{LIGHT_SERVICES_UUID}\" not found for device {}", self.addr)
+            ))))
         }
     }
 
-    pub async fn set_color(&self, buf: [u8; 4]) -> bluer::Result<()> {
+    pub async fn set_color(&self, buf: [u8; 4]) -> btleplug::Result<()> {
         self.write_gatt_char(&LIGHT_SERVICES_UUID, &COLOR_UUID, &buf)
             .await?;
 
         Ok(())
     }
 
-    pub async fn get_name(&self) -> bluer::Result<Option<String>> {
-        self.name().await
-    }
-
-    pub async fn connect_to_profile(&self, uuid: &Uuid) -> bluer::Result<()> {
-        self.connect_profile(uuid).await
-    }
-
-    pub async fn disconnect_from_profile(&self, uuid: &Uuid) -> bluer::Result<()> {
-        self.disconnect_profile(uuid).await
+    pub async fn get_name(&self) -> btleplug::Result<Option<String>> {
+        Ok(self
+            .properties()
+            .await?
+            .map(|properties| properties.local_name)
+            .unwrap_or(None))
     }
 }
 
@@ -565,7 +491,7 @@ where
     async fn send_packet_to_daemon(&self, flags: MaskT, data: [u8; DATA_LEN + 1]) -> CmdOutput {
         Self::_send_packet_to_daemon(
             &mut Self::get_file_socket().await,
-            Some(*self.addr),
+            Some(self.addr.into_inner()),
             flags,
             data,
         )
@@ -623,19 +549,16 @@ where
 pub async fn search_devices_by_name<T>(
     name: &str,
     timeout_seconds: u64,
-) -> bluer::Result<Pin<Box<dyn stream::Stream<Item = HueDevice<T>> + Send>>>
+) -> btleplug::Result<Pin<Box<dyn stream::Stream<Item = HueDevice<T>> + Send>>>
 where
     T: std::fmt::Debug + Send + 'static,
     HueDevice<T>: Default,
 {
-    let session = Session::new().await?;
-    let adapter = session.default_adapter().await?;
+    let manager = Manager::new().await?;
+    let adapters = manager.adapters().await?;
+    let adapter = adapters.into_iter().next().unwrap();
 
-    if !adapter.is_powered().await? {
-        adapter.set_powered(true).await?;
-    }
-
-    let discovery = adapter.discover_devices().await?;
+    let discovery = adapter.events().await?;
 
     let stream = stream::unfold(
         Some((discovery, adapter, name.to_string())),
@@ -646,12 +569,18 @@ where
             };
 
             match time::timeout(Duration::from_secs(timeout_seconds), discovery.next()).await {
-                Ok(Some(AdapterEvent::DeviceAdded(addr))) => {
-                    if let Ok(ble_device) = adapter.device(addr) {
-                        if let Ok(Some(device_name)) = ble_device.name().await {
+                Ok(Some(CentralEvent::DeviceDiscovered(id))) => {
+                    if let Ok(bt_device) = adapter.peripheral(&id).await {
+                        if let Some(device_name) = bt_device
+                            .properties()
+                            .await
+                            .unwrap_or(None)
+                            .map(|properties| properties.local_name)
+                            .unwrap_or(None)
+                        {
                             if device_name.to_lowercase().contains(&name.to_lowercase()) {
-                                let mut hue_device = HueDevice::new(addr);
-                                hue_device.set_device(ble_device);
+                                let mut hue_device = HueDevice::new(bt_device.address());
+                                hue_device.set_device(bt_device);
                                 return Some((hue_device, Some((discovery, adapter, name))));
                             }
                         }
@@ -671,37 +600,33 @@ where
     })))
 }
 
-pub async fn get_device<T>(address: [u8; ADDR_LEN]) -> bluer::Result<Option<HueDevice<T>>>
+pub async fn get_device<T>(address: [u8; ADDR_LEN]) -> btleplug::Result<Option<HueDevice<T>>>
 where
     T: std::fmt::Debug,
     HueDevice<T>: Default,
 {
-    let session = Session::new().await?;
-    let adapter = session.default_adapter().await?;
+    let manager = Manager::new().await?;
+    let adapters = manager.adapters().await?;
+    let adapter = adapters.first().unwrap();
 
-    if !adapter.is_powered().await? {
-        adapter.set_powered(true).await?;
-    }
-
-    let mut discovery = adapter.discover_devices().await?;
-    let mut pinned_disco = unsafe { Pin::new_unchecked(&mut discovery) };
+    let mut discovery = adapter.events().await?;
     let mut device: Option<HueDevice<T>> = None;
 
-    while let Some(event) = pinned_disco.next().await {
-        if let AdapterEvent::DeviceAdded(addr) = event {
-            let addr_slice = *addr;
+    while let Some(event) = discovery.next().await {
+        if let CentralEvent::DeviceDiscovered(id) = event {
+            let bt_device = match adapter.peripheral(&id).await {
+                Ok(peripheral) => peripheral,
+                _ => continue,
+            };
+            let addr = bt_device.address();
+            let addr_slice = addr.into_inner();
+
             if address != addr_slice {
                 continue;
             }
-            let ble_device = adapter.device(addr)?;
-
-            // Device known but not in range
-            if ble_device.rssi().await?.is_none() {
-                // TODO: Handle me (it, somehow returns None even if in range)
-            }
 
             let mut hue_device = HueDevice::new(addr);
-            hue_device.set_device(ble_device);
+            hue_device.set_device(bt_device);
             device = Some(hue_device);
             break;
         }
@@ -710,59 +635,42 @@ where
     Ok(device)
 }
 
-pub async fn get_devices<T>(addrs: &[[u8; ADDR_LEN]]) -> bluer::Result<Vec<HueDevice<T>>>
+pub async fn get_devices<T>(addrs: &[[u8; ADDR_LEN]]) -> btleplug::Result<Vec<HueDevice<T>>>
 where
     T: std::fmt::Debug,
     HueDevice<T>: Default,
 {
-    let session = Session::new().await?;
-    let adapter = session.default_adapter().await?;
+    let manager = Manager::new().await?;
+    let adapters = manager.adapters().await?;
+    let adapter = adapters.first().unwrap();
 
-    if !adapter.is_powered().await? {
-        adapter.set_powered(true).await?;
-    }
-
-    let mut discovery = adapter.discover_devices().await?;
-    let mut pinned_disco = unsafe { Pin::new_unchecked(&mut discovery) };
+    let mut discovery = adapter.events().await?;
     let mut addresses: HashMap<[u8; ADDR_LEN], HueDevice<T>> = HashMap::with_capacity(addrs.len());
 
     addrs.iter().for_each(|addr| {
-        addresses.insert(*addr, HueDevice::new(Address::new(*addr)));
+        addresses.insert(*addr, HueDevice::new(BDAddr::from(*addr)));
     });
 
-    while let Some(event) = pinned_disco.next().await {
-        match event {
-            AdapterEvent::DeviceAdded(addr) => {
-                let addr_slice = *addr;
-                if !addresses.contains_key(&addr_slice) {
-                    continue;
-                }
-                let ble_device = adapter.device(addr)?;
-
-                // Device known but not in range
-                if ble_device.rssi().await?.is_none() {
-                    // TODO: Handle me
-                }
-
-                let hue_device = addresses.get_mut(&addr_slice).unwrap(); // Shouldn't panic
-                hue_device.set_device(ble_device);
-
-                if !addresses.iter().any(|(_, v)| v.device.is_none()) {
-                    // Not any None variant
-                    // device
-                    break;
-                }
+    while let Some(event) = discovery.next().await {
+        if let CentralEvent::DeviceDiscovered(id) = event {
+            let bt_device = match adapter.peripheral(&id).await {
+                Ok(peripheral) => peripheral,
+                _ => continue,
+            };
+            let addr = bt_device.address();
+            let addr_slice = addr.into_inner();
+            if !addresses.contains_key(&addr_slice) {
+                continue;
             }
-            AdapterEvent::DeviceRemoved(addr) => {
-                let addr_slice = *addr;
-                if !addresses.contains_key(&addr_slice) {
-                    continue;
-                }
 
-                let hue_device = addresses.get_mut(&addr_slice).unwrap(); // Shouldn't panic
-                hue_device.unset_device();
+            let hue_device = addresses.get_mut(&addr_slice).unwrap(); // Shouldn't panic
+            hue_device.set_device(bt_device);
+
+            if !addresses.iter().any(|(_, v)| v.device.is_none()) {
+                // Not any None variant
+                // device
+                break;
             }
-            _ => (),
         }
     }
 

@@ -5,5 +5,5 @@ pub mod constants;
 #[cfg(test)]
 mod tests;
 
-pub use bluer::Address as BluetoothAddr;
+pub use btleplug::api::{BDAddr as BluetoothAddr, Peripheral as BluetoothPeripheral};
 pub use color_space;

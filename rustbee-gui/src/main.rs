@@ -21,7 +21,7 @@ use rustbee_common::bluetooth::{Client, FoundDevice, HueDevice};
 use rustbee_common::color_space::Rgb;
 use rustbee_common::colors::Xy;
 use rustbee_common::constants::{masks, OutputCode, ADDR_LEN, DATA_LEN, GUI_SAVE_INTERVAL_SECS};
-use rustbee_common::BluetoothAddr;
+use rustbee_common::{BluetoothAddr, BluetoothPeripheral as _};
 
 const APP_ID: &str = "Rustbee";
 const FONT_NAME: &str = "monaspace";
@@ -123,7 +123,7 @@ struct SavedDevice {
 impl From<&HueDeviceWrapper> for SavedDevice {
     fn from(device: &HueDeviceWrapper) -> Self {
         Self {
-            address: *device.addr,
+            address: device.addr.into_inner(),
             name: device.name.clone(),
             current_color: *device.current_color,
         }
@@ -278,7 +278,7 @@ impl App {
                 .unwrap_or(Vec::new())
             {
                 let mut hue_device =
-                    HueDeviceWrapper::from_address(BluetoothAddr::new(device.address));
+                    HueDeviceWrapper::from_address(BluetoothAddr::from(device.address));
                 hue_device.name = device.name;
                 hue_device.current_color =
                     Debounce::new(device.current_color, Duration::from_secs(DEBOUNCE_SECS));
@@ -1053,7 +1053,7 @@ impl eframe::App for App {
                                     let btn = ui.button(format!(
                                         "{} - {}",
                                         device.name,
-                                        BluetoothAddr::new(addr)
+                                        BluetoothAddr::from(addr)
                                     ));
 
                                     if btn.hovered() {
@@ -1070,7 +1070,7 @@ impl eframe::App for App {
 
                                             let mut devices = devices.write().await;
                                             let mut device = HueDeviceWrapper::from_address(
-                                                BluetoothAddr::new(addr),
+                                                BluetoothAddr::from(addr),
                                             );
 
                                             match device.pair().await {
@@ -1407,9 +1407,9 @@ fn main() -> eframe::Result {
     Ok(())
 }
 
-fn parse_address(str: &str) -> Result<BluetoothAddr, String> {
-    BluetoothAddr::from_str(str).map_err(|e| e.0)
-}
+// fn parse_address(str: &str) -> Result<BluetoothAddr, String> {
+//     BluetoothAddr::from_str(str).map_err(|e| e.0)
+// }
 
 async fn update_all_devices_state(devices: Arc<RwLock<AppDevices>>) {
     for (_, device) in devices.write().await.iter_mut() {

@@ -7,7 +7,7 @@ use rustbee_common::constants::*;
 use cli::Command;
 
 #[tokio::main]
-async fn main() -> bluer::Result<()> {
+async fn main() -> btleplug::Result<()> {
     let args = cli::Args::parse();
     let command: &mut Command = Box::leak(Box::new(args.command));
     let mut tasks = Vec::new();
@@ -29,7 +29,7 @@ async fn main() -> bluer::Result<()> {
     }
 
     for task in tasks {
-        task.await??;
+        task.await.expect("Failed to spawn async tokio task")?;
     }
 
     Ok(())
