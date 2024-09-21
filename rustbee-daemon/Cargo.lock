@@ -862,7 +862,6 @@ dependencies = [
 name = "rustbee-common"
 version = "0.1.0"
 dependencies = [
- "bluer",
  "btleplug",
  "color_space",
  "futures",
