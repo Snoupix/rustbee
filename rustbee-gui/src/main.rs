@@ -118,6 +118,7 @@ struct SavedDevice {
     address: [u8; ADDR_LEN],
     name: String,
     current_color: [u8; 3],
+    brightness: u8,
 }
 
 impl From<&HueDeviceWrapper> for SavedDevice {
@@ -126,6 +127,7 @@ impl From<&HueDeviceWrapper> for SavedDevice {
             address: device.addr.into_inner(),
             name: device.name.clone(),
             current_color: *device.current_color,
+            brightness: device.brightness,
         }
     }
 }
@@ -260,9 +262,9 @@ impl App {
             style.visuals.selection.bg_fill = WHITE;
         });
 
-        if let Some(state) = cc.storage {
-            let mut devices = tokio_rt.block_on(devices.write());
+        let mut devices_guard = tokio_rt.block_on(devices.write());
 
+        if let Some(state) = cc.storage {
             for device in state
                 .get_string("devices")
                 .map(|devices_str| {
@@ -283,16 +285,25 @@ impl App {
                 hue_device.current_color =
                     Debounce::new(device.current_color, Duration::from_secs(DEBOUNCE_SECS));
 
-                devices.insert(device.address, hue_device);
+                devices_guard.insert(device.address, hue_device);
             }
         }
+
+        let lower_brightness = devices_guard.iter().fold(100u8, |v, (_, device)| {
+            if device.brightness < v {
+                device.brightness
+            } else {
+                v
+            }
+        });
+
+        drop(devices_guard);
 
         Box::new(Self {
             devices,
             tokio_rt,
             devices_color: Debounce::new([0; 3], Duration::from_secs(DEBOUNCE_SECS)),
-            // TODO: if devices found, set this to lower brightness found (impl brightness save)
-            devices_brightness: Debounce::new(50, Duration::from_secs(1)),
+            devices_brightness: Debounce::new(lower_brightness, Duration::from_secs(1)),
             device_error: None,
             device_name_search: String::new(),
             devices_found: Arc::new(RwLock::new(Vec::new())),
@@ -1173,12 +1184,12 @@ impl eframe::App for App {
 
                     ui.horizontal(|ui| {
                         ui.text(format!("Devices brightness {}%", *self.devices_brightness));
-                        ui.add(
+                        let slider = ui.add(
                             Slider::new(&mut *self.devices_brightness, 0..=100)
                                 .show_value(false)
                                 .trailing_fill(true),
                         );
-                        if self.devices_brightness.update() {
+                        if slider.changed() && self.devices_brightness.update() {
                             let percentage = *self.devices_brightness;
                             let devices_ref = Arc::clone(&devices);
 
@@ -1344,6 +1355,7 @@ impl eframe::App for App {
                     "name": device.name,
                     "address": device.address,
                     "current_color": device.current_color,
+                    "brightness": device.brightness,
                 }))
                 .collect::<Vec<_>>())
             .to_string(),

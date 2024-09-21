@@ -16,24 +16,30 @@ endif
 badd +60 README.md
 badd +163 rustbee
 badd +1 .gitignore
-badd +1180 rustbee-gui/src/main.rs
-badd +11 Cargo.toml
-badd +6 rustbee-common/src/lib.rs
+badd +1284 rustbee-gui/src/main.rs
+badd +7 Cargo.toml
+badd +8 rustbee-common/src/lib.rs
 badd +34 rustbee-common/src/constants.rs
-badd +27 src/main.rs
-badd +1 rustbee-daemon/src/main.rs
+badd +32 src/main.rs
+badd +279 rustbee-daemon/src/main.rs
 badd +130 rustbee-common/src/colors.rs
-badd +597 rustbee-common/src/bluetooth.rs
+badd +654 rustbee-common/src/bluetooth.rs
 badd +12 rustbee-gui/Cargo.toml
-badd +69 src/cli.rs
+badd +67 src/cli.rs
 badd +1 rustbee-common/Cargo.toml
 badd +18 rustbee-common/src/tests.rs
-badd +198 ~/.cargo/registry/src/index.crates.io-6f17d22bba15001f/btleplug-0.11.5/src/api/bdaddr.rs
 argglobal
 %argdel
-edit rustbee-common/src/bluetooth.rs
+edit rustbee-gui/src/main.rs
+wincmd t
+let s:save_winminheight = &winminheight
+let s:save_winminwidth = &winminwidth
+set winminheight=0
+set winheight=1
+set winminwidth=0
+set winwidth=1
 argglobal
-balt ~/.cargo/registry/src/index.crates.io-6f17d22bba15001f/btleplug-0.11.5/src/api/bdaddr.rs
+balt src/main.rs
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -44,12 +50,12 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 582 - ((30 * winheight(0) + 27) / 55)
+let s:l = 1284 - ((27 * winheight(0) + 27) / 55)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 582
-normal! 054|
+keepjumps 1284
+normal! 025|
 lcd ~/work/rustbee
 tabnext 1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0 && getbufvar(s:wipebuf, '&buftype') isnot# 'terminal'
@@ -58,6 +64,8 @@ endif
 unlet! s:wipebuf
 set winheight=1 winwidth=20
 let &shortmess = s:shortmess_save
+let &winminheight = s:save_winminheight
+let &winminwidth = s:save_winminwidth
 let s:sx = expand("<sfile>:p:r")."x.vim"
 if filereadable(s:sx)
   exe "source " . fnameescape(s:sx)
