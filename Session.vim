@@ -16,30 +16,23 @@ endif
 badd +60 README.md
 badd +163 rustbee
 badd +1 .gitignore
-badd +1284 rustbee-gui/src/main.rs
+badd +1445 rustbee-gui/src/main.rs
 badd +7 Cargo.toml
 badd +8 rustbee-common/src/lib.rs
 badd +34 rustbee-common/src/constants.rs
 badd +32 src/main.rs
-badd +279 rustbee-daemon/src/main.rs
+badd +63 rustbee-daemon/src/main.rs
 badd +130 rustbee-common/src/colors.rs
 badd +654 rustbee-common/src/bluetooth.rs
-badd +12 rustbee-gui/Cargo.toml
+badd +13 rustbee-gui/Cargo.toml
 badd +67 src/cli.rs
-badd +1 rustbee-common/Cargo.toml
+badd +7 rustbee-common/Cargo.toml
 badd +18 rustbee-common/src/tests.rs
 argglobal
 %argdel
 edit rustbee-gui/src/main.rs
-wincmd t
-let s:save_winminheight = &winminheight
-let s:save_winminwidth = &winminwidth
-set winminheight=0
-set winheight=1
-set winminwidth=0
-set winwidth=1
 argglobal
-balt src/main.rs
+balt rustbee-gui/Cargo.toml
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -50,12 +43,12 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 1284 - ((27 * winheight(0) + 27) / 55)
+let s:l = 1445 - ((27 * winheight(0) + 27) / 55)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 1284
-normal! 025|
+keepjumps 1445
+normal! 020|
 lcd ~/work/rustbee
 tabnext 1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0 && getbufvar(s:wipebuf, '&buftype') isnot# 'terminal'
@@ -64,13 +57,12 @@ endif
 unlet! s:wipebuf
 set winheight=1 winwidth=20
 let &shortmess = s:shortmess_save
-let &winminheight = s:save_winminheight
-let &winminwidth = s:save_winminwidth
 let s:sx = expand("<sfile>:p:r")."x.vim"
 if filereadable(s:sx)
   exe "source " . fnameescape(s:sx)
 endif
 let &g:so = s:so_save | let &g:siso = s:siso_save
+nohlsearch
 doautoall SessionLoadPost
 unlet SessionLoad
 " vim: set ft=vim :
