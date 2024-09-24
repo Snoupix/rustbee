@@ -11,10 +11,11 @@ export docker_base_pkgs := "(apt-get update && apt-get install -y libdbus-1-dev 
 log_path := `cat rustbee-common/src/constants.rs | grep "const LOG_PATH" | grep -oE '".*"' | sed s/\"//g`
 socket_path := `cat rustbee-common/src/constants.rs | grep "const SOCKET_PATH" | grep -oE '".*"' | sed s/\"//g`
 export purple := "\\e[35m"
-export red := "\\e[32m"
+export red := "\\e[31m"
 export white := "\\e[0m"
 
 alias ba := build-all
+alias ia := install-all
 
 # Not actually called but when calling "just" it takes the first recipe
 [doc]
@@ -23,13 +24,14 @@ _default:
 
 @build-all: build build-gui
 
+@install-all: install install-gui
+
 # CLI Build
 @build:
     cargo build --release
     echo -e "$purple[Rustbee CLI] Finished compiling !$white"
     {{DAEMON}} build
 
-[private]
 @build-gui:
     {{GUI}} build
     {{DAEMON}} build
@@ -65,21 +67,21 @@ build-gui-docker:
 @debug-gui:
     {{GUI}} debug
 
-install-cli: install-daemon
+install:
     #!/usr/bin/env bash
     if [[ ! -f ./target/release/rustbee || ! -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
-        echo "Binaries are not built, you must run \`just build-cli\` first"
+        echo -e "${red}Binaries are not built, you must run \`just build-cli\` first$white"
         exit 1
     fi
 
-    sudo ln -sf ./target/release/rustbee /bin/rustbee
-
-@install-gui: install-daemon
-    {{GUI}} install
-
-[private]
-@install-daemon:
     {{DAEMON}} install
+
+    sudo ln -sf ./target/release/rustbee /bin/rustbee
+    echo -e "${purple}Done! You can now use \`rustbee\` globally$white"
+
+@install-gui:
+    {{DAEMON}} install
+    {{GUI}} install
 
 # This avoids failing so it can be used even if GUI isn't installed for e.g.
 [doc("Optional flag: --preserve-logs")]
@@ -93,7 +95,7 @@ install-cli: install-daemon
     if {{ if flag == "--preserve-logs" { "true" } else { "false" } }}; then \
         -sudo rm $log_path > /dev/null 2>&1; \
     fi
-    echo "Rustbee binaries are successfully uninstalled"
+    echo -e "${purple}Rustbee binaries are successfully uninstalled$white"
 
 # TODO: Migrate that feature to the CLI ?
 [doc("Optional flag: --force/-f")]

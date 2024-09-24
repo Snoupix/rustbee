@@ -2,10 +2,9 @@
 _default:
     @just -l --list-heading $'Available commands:\n' --unsorted
 
-[no-exit-message]
 @build:
     cargo build --release
-    echo "[Rustbee GUI] Finished compiling !"
+    echo -e "$purple[Rustbee GUI] Finished compiling !$white"
 
 build-docker:
     #!/usr/bin/env bash
@@ -14,7 +13,7 @@ build-docker:
     fi
 
     if [[ -f ./rustbee-gui/target/release/rustbee-gui && -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
-        echo "Binaries are already built, you can run \`just install-gui\` to install rustbee GUI"
+        echo -e "${red}Binaries are already built, you can run \`just install-gui\` to install rustbee GUI$white"
         exit 1
     fi
 
@@ -25,7 +24,7 @@ build-docker:
     sudo chown -R $(id -u):$(id -g) ./rustbee-gui/target
     sudo chown -R $(id -u):$(id -g) ./rustbee-daemon/target
 
-    echo "Done! You can now run \`just install-gui\` to install rustbee GUI"
+    echo -e "${purple}Done! You can now run \`just install-gui\` to install rustbee GUI$white"
 
 @debug:
     cargo watch -d 1.5 -x build -s ./target/debug/rustbee-gui
@@ -33,7 +32,7 @@ build-docker:
 install:
     #!/usr/bin/env bash
     if [[ ! -f ./target/release/rustbee-gui || ! -f ../rustbee-daemon/target/release/rustbee-daemon ]]; then
-        echo "Binaries are not built, you must run \`just build-gui\` first"
+        echo -e "${red}Binaries are not built, you must run \`just build-gui\` first$white"
         exit 1
     fi
 

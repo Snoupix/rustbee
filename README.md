@@ -31,19 +31,33 @@ Optional if docker is installed and you wanna compile locally:
 
 ## Build from source
 
+This project uses [just](https://github.com/casey/just) as a command runner, which is a `make` alternative. It's recommanded to have it installed to build the project from source.
+
 Note that you will need to enter your password, the bash script uses `sudo` to have permissions to create an IPC file socket at `/var/run` (which is root owned/protected), the log file at `/var/log` and if you're building with docker, it will compile root owned binaries so it will need your password at the end to change owner of these files.
 
 Depending on your CPU, compiling this project may take you around 2mins with or without docker.
 
 ```bash
 # First, you need to build the binaries
-./rustbee build cli
+just build
 # Or, if you prefer using the GUI
-./rustbee build gui
-# And you can also use the -d or --docker flag at the end of the command to use docker to compile
+just build-gui
+# And if you don't have rustc/cargo you can also use docker to compile the CLI
+just build-docker
+# Or to compile the GUI
+just build-gui-docker
 
-# Then, you can manually add the executables to your PATH or let rustbee do it for you (it will add a symlink to the bash script on /bin)
-./rustbee install
+# Then, you can manually use the executables or let rustbee add a symlink to the binaries on /bin for you
+just install
+# Or, for the GUI
+just install-gui
+
+# If you just wanna stop the rustbee-daemon manually and close (delete) the file socket and if for some reason it doesn't kill the process gracefully, you can use -f or --force to force kill the daemon
+just shutdown
+
+# If you want to uninstall
+just uninstall
+# And you can also add "--preserve-logs" to avoid removing logs file
 ```
 
 ## How to use
@@ -62,13 +76,6 @@ rustbee gui
 
 # You can get the logs file path and use it as you wish (e.g. `rustbee logs | xargs cat` or `tail $(rustbee logs)`)
 rustbee logs
-
-# If you just wanna stop the rustbee-daemon manually and close (delete) the file socket and if for some reason it doesn't kill the process gracefully, you can use -f or --force to force kill the daemon
-rustbee shutdown
-
-# If you want to uninstall
-rustbee uninstall
-# And you can also add "--preserve-logs" to avoid removing logs file
 ```
 
 *On error: if you get "le-connection-abort-by-local" error, it's kind of usual, BLE is a bit weak so try again your last command, it will most likely work after an other try*
@@ -89,12 +96,13 @@ rustbee uninstall
 - [ ] `rustbee gui` should launch the gui executable (get it from PATH)
 - [ ] Impl CLI data lights save and maybe share it with GUI
 - [ ] [CLI] Find a way to select a device with a better UX
-- [ ] Impl `justfile` recipes to replace bash script for a better DX and update README for steps
+- [x] Impl `justfile` recipes to replace bash script for a better DX and update README for steps
 - [ ] Impl CI to create and publish binaries
 - [ ] The deamon launch feature should be migrated to common so cli and gui can launch it without bash
 - [ ] Impl a better logging for the daemon and it should log to file itself
 - [ ] setcap of rustbee cli exec to be able to create file socket
 - [ ] setcap of rustbee daemon exec to be able to create log file
+- [ ] CLI should have a logs command to output the log file to stdout
 
 ----
 

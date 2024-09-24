@@ -9,6 +9,7 @@ _default:
 
 @install:
     sudo ln -sf ./target/release/rustbee-daemon /bin/rustbee-daemon
+    echo -e "${purple}Rustbee Daemon symlinked to /bin dir$white"
 
 # TODO: add exec to path
 @uninstall:
