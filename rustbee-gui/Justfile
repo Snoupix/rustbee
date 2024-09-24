@@ -1,0 +1,45 @@
+[doc]
+_default:
+    @just -l --list-heading $'Available commands:\n' --unsorted
+
+[no-exit-message]
+@build:
+    cargo build --release
+    echo "[Rustbee GUI] Finished compiling !"
+
+build-docker:
+    #!/usr/bin/env bash
+    if [[ $(pwd) != */rustbee ]]; then
+        cd ..
+    fi
+
+    if [[ -f ./rustbee-gui/target/release/rustbee-gui && -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
+        echo "Binaries are already built, you can run \`just install-gui\` to install rustbee GUI"
+        exit 1
+    fi
+
+    echo "Compiling Rustbee GUI & its daemon with docker... (feel free to make some coffe)"
+
+    docker run --rm --user root -v {{justfile_dir()}}:/usr/src/rustbee -w /usr/src/rustbee rust:$MSRV-bullseye \
+        bash -c "$docker_base_pkgs && cd rustbee-gui && cargo build --release && cd ../rustbee-daemon && cargo build --release"
+    sudo chown -R $(id -u):$(id -g) ./rustbee-gui/target
+    sudo chown -R $(id -u):$(id -g) ./rustbee-daemon/target
+
+    echo "Done! You can now run \`just install-gui\` to install rustbee GUI"
+
+@debug:
+    cargo watch -d 1.5 -x build -s ./target/debug/rustbee-gui
+
+install:
+    #!/usr/bin/env bash
+    if [[ ! -f ./target/release/rustbee-gui || ! -f ../rustbee-daemon/target/release/rustbee-daemon ]]; then
+        echo "Binaries are not built, you must run \`just build-gui\` first"
+        exit 1
+    fi
+
+    sudo ln -sf ./target/release/rustbee-gui /bin/rustbee-gui
+
+# TODO: add exec to path
+@uninstall:
+    -cargo clean > /dev/null 2>&1
+    -sudo rm /bin/rustbee-gui > /dev/null 2>&1

@@ -48,6 +48,12 @@ Depending on your CPU, compiling this project may take you around 2mins with or 
 
 ## How to use
 
+To connect a Philips Hue light, you may need the official mobile app [Apple Store](https://apps.apple.com/us/app/philips-hue-gen-2/id1055281310?ls=1) - [Google Play Store](jttps://play.google.com/store/apps/details?id=com.philips.lighting.hue2). On the app, you need to go to `Settings > Voice Assistants > Amazon Alexa and tap Make visible` [thanks to alexhorn/libhueble](https://github.com/alexhorn/libhueble/issues/1).
+
+This will enable the device to be discoverable and then after that, you will have to **pair** and **trust** your device via Bluetooth.
+
+If you can't try again but factory reset your light before.
+
 ```bash
 # To get the CLI commands available
 rustbee help
@@ -70,16 +76,25 @@ rustbee uninstall
 ### Modules/Binaries
 
 1. rustbee (bin): The base module is used as the CLI (Command Line Interface) for light control (power state (set/get)/bightness (set/get)/color (set/get)/pair-trust/connect/disconnect)
+1. rustbee-gui (bin): The GUI (Graphical User Interface) that can replace the CLI for a better UX and will also be a WASM module to use the browser instead of natiive GUI
 1. rustbee-daemon (bin): The local filesystem socket running as a background daemon for interprocess communication (IPC) to keep connection with the lights and avoid connect/disconnect on every command (BLE communication is kind of tricky and fails sometimes) and disconnects them on a timeout
 1. rustbee-common (lib): Actual implementations of bluetooth devices and common stuff used by the other binaries
-1. rustbee-gui (bin): The GUI (Graphical User Interface) that can replace the CLI for a better UX and will also be a WASM module to use the browser instead of natiive GUI
 
 ### TODO
 
 - [ ] Migrate from unix domain socket to local_socket for interop
-- [ ] Migrate from bluez to bleplug for interop
+- [x] Migrate from bluez to bleplug for interop (lost pair and trust features on the process)
 - [ ] Clarify CLI args (add descriptions)
 - [ ] When finished with GUI impl, try to impl WASM build target
+- [ ] `rustbee gui` should launch the gui executable (get it from PATH)
+- [ ] Impl CLI data lights save and maybe share it with GUI
+- [ ] [CLI] Find a way to select a device with a better UX
+- [ ] Impl `justfile` recipes to replace bash script for a better DX and update README for steps
+- [ ] Impl CI to create and publish binaries
+- [ ] The deamon launch feature should be migrated to common so cli and gui can launch it without bash
+- [ ] Impl a better logging for the daemon and it should log to file itself
+- [ ] setcap of rustbee cli exec to be able to create file socket
+- [ ] setcap of rustbee daemon exec to be able to create log file
 
 ----
 
