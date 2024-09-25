@@ -13,7 +13,7 @@ if &shortmess =~ 'A'
 else
   set shortmess=aoO
 endif
-badd +94 README.md
+badd +53 README.md
 badd +181 rustbee
 badd +1 .gitignore
 badd +556 rustbee-gui/src/main.rs
@@ -28,9 +28,9 @@ badd +13 rustbee-gui/Cargo.toml
 badd +67 src/cli.rs
 badd +7 rustbee-common/Cargo.toml
 badd +18 rustbee-common/src/tests.rs
-badd +17 Justfile
-badd +31 rustbee-gui/Justfile
-badd +8 rustbee-daemon/Justfile
+badd +83 Justfile
+badd +8 rustbee-gui/Justfile
+badd +12 rustbee-daemon/Justfile
 argglobal
 %argdel
 edit Justfile
@@ -53,7 +53,7 @@ set winwidth=1
 exe 'vert 1resize ' . ((&columns * 83 + 83) / 167)
 exe 'vert 2resize ' . ((&columns * 83 + 83) / 167)
 argglobal
-balt README.md
+balt rustbee-daemon/Justfile
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -64,12 +64,12 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 17 - ((16 * winheight(0) + 27) / 55)
+let s:l = 15 - ((14 * winheight(0) + 27) / 55)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 17
-normal! 0
+keepjumps 15
+normal! 024|
 lcd ~/work/rustbee
 wincmd w
 argglobal

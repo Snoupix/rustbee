@@ -76,7 +76,7 @@ install:
 
     {{DAEMON}} install
 
-    sudo ln -sf ./target/release/rustbee /bin/rustbee
+    sudo ln -sf $PWD/target/release/rustbee /bin/rustbee
     echo -e "${purple}Done! You can now use \`rustbee\` globally$white"
 
 @install-gui:

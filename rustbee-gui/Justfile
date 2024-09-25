@@ -1,11 +1,13 @@
-[doc]
+[private]
 _default:
-    @just -l --list-heading $'Available commands:\n' --unsorted
+    @echo "[ERROR] Just commands must be run on the root of the project"
 
+[private]
 @build:
     cargo build --release
     echo -e "$purple[Rustbee GUI] Finished compiling !$white"
 
+[private]
 build-docker:
     #!/usr/bin/env bash
     if [[ $(pwd) != */rustbee ]]; then
@@ -26,9 +28,11 @@ build-docker:
 
     echo -e "${purple}Done! You can now run \`just install-gui\` to install rustbee GUI$white"
 
+[private]
 @debug:
     cargo watch -d 1.5 -x build -s ./target/debug/rustbee-gui
 
+[private]
 install:
     #!/usr/bin/env bash
     if [[ ! -f ./target/release/rustbee-gui || ! -f ../rustbee-daemon/target/release/rustbee-daemon ]]; then
@@ -36,9 +40,11 @@ install:
         exit 1
     fi
 
-    sudo ln -sf ./target/release/rustbee-gui /bin/rustbee-gui
+    sudo ln -sf $PWD/target/release/rustbee-gui /bin/rustbee-gui
+    echo -e "${purple}Rustbee GUI symlinked to /bin dir$white"
 
 # TODO: add exec to path
+[private]
 @uninstall:
     -cargo clean > /dev/null 2>&1
     -sudo rm /bin/rustbee-gui > /dev/null 2>&1

@@ -1,17 +1,19 @@
-[doc]
+[private]
 _default:
-    @just -l --list-heading $'Available commands:\n' --unsorted
+    @echo "[ERROR] Just commands must be run on the root of the project"
 
-[no-exit-message]
+[private]
 @build:
     cargo build --release
     echo -e "$purple[Rustbee Daemon] Finished compiling !$white"
 
+[private]
 @install:
-    sudo ln -sf ./target/release/rustbee-daemon /bin/rustbee-daemon
+    sudo ln -sf $PWD/target/release/rustbee-daemon /bin/rustbee-daemon
     echo -e "${purple}Rustbee Daemon symlinked to /bin dir$white"
 
 # TODO: add exec to path
+[private]
 @uninstall:
     -cargo clean > /dev/null 2>&1
     -sudo rm /bin/rustbee-daemon > /dev/null 2>&1
