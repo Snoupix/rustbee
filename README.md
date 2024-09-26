@@ -79,9 +79,9 @@ rustbee help
 # Or you can launch the GUI
 rustbee gui
 
-# You can get the logs file path and use it as you wish (e.g. `rustbee logs | xargs cat` or `tail $(rustbee logs)`)
+# You can get the logs file path and use it as you wish (e.g. `just logs | xargs cat` or `tail $(just logs)`)
 just logs
-# But it will soon be an added command to the CLI with options like --limit
+# But it will soon be an added command to the CLI with options like --limit and --follow
 # rustbee logs
 ```
 
