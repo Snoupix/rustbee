@@ -33,9 +33,9 @@ Optional if docker is installed and you wanna compile locally:
 
 This project uses [just](https://github.com/casey/just) as a command runner, which is a `make` alternative. It's recommanded to have it installed to build the project from source.
 
-Note that you will need to enter your password, the bash script uses `sudo` to have permissions to create an IPC file socket at `/var/run` (which is root owned/protected), the log file at `/var/log` and if you're building with docker, it will compile root owned binaries so it will need your password at the end to change owner of these files.
+Note that you will need to enter your password, the daemon needs `sudo` to have permissions to create an IPC file socket at `/var/run` (which is root owned/protected), the log file at `/var/log` and if you're building with docker, it will compile root owned binaries so it will need your password at the end to change owner of these files.
 
-Depending on your CPU, compiling this project may take you around 2mins with or without docker.
+Also, the daemon is compiled whether you chose the CLI or GUI.
 
 ```bash
 # First, you need to build the binaries
@@ -56,7 +56,8 @@ just install-gui
 # If you just want to stop the rustbee-daemon manually and close (delete)
 # the file socket and if for some reason it doesn't kill the process
 # gracefully, you can use -f or --force to force kill the daemon and
-# if it says "Permission denied (os error 13)" you have to use sudo with --force
+# if it outputs "Permission denied (os error 13)" you have to use sudo
+# with the --force flag
 just shutdown
 
 # If you want to uninstall
@@ -66,7 +67,7 @@ just uninstall
 
 ## How to use
 
-To connect a Philips Hue light, you may need the official mobile app [Apple Store](https://apps.apple.com/us/app/philips-hue-gen-2/id1055281310?ls=1) - [Google Play Store](jttps://play.google.com/store/apps/details?id=com.philips.lighting.hue2). On the app, you need to go to `Settings > Voice Assistants > Amazon Alexa and tap Make visible` [thanks to alexhorn/libhueble](https://github.com/alexhorn/libhueble/issues/1).
+To connect a Philips Hue light, you may need the official mobile app [Apple Store](https://apps.apple.com/us/app/philips-hue-gen-2/id1055281310?ls=1) - [Google Play Store](https://play.google.com/store/apps/details?id=com.philips.lighting.hue2). On the app, you need to go to `Settings > Voice Assistants > Amazon Alexa and tap Make visible` [thanks to alexhorn/libhueble](https://github.com/alexhorn/libhueble/issues/1).
 
 This will enable the device to be discoverable and then after that, you will have to **pair** and **trust** your device via Bluetooth.
 
@@ -79,17 +80,19 @@ rustbee help
 rustbee gui
 
 # You can get the logs file path and use it as you wish (e.g. `rustbee logs | xargs cat` or `tail $(rustbee logs)`)
-rustbee logs
+just logs
+# But it will soon be an added command to the CLI with options like --limit
+# rustbee logs
 ```
 
 *On error: if you get "le-connection-abort-by-local" error, it's kind of usual, BLE is a bit weak so try again your last command, it will most likely work after an other try*
 
 ### Modules/Binaries
 
-1. rustbee (bin): The base module is used as the CLI (Command Line Interface) for light control (power state (set/get)/bightness (set/get)/color (set/get)/pair-trust/connect/disconnect)
-1. rustbee-gui (bin): The GUI (Graphical User Interface) that can replace the CLI for a better UX and will also be a WASM module to use the browser instead of natiive GUI
-1. rustbee-daemon (bin): The local filesystem socket running as a background daemon for interprocess communication (IPC) to keep connection with the lights and avoid connect/disconnect on every command (BLE communication is kind of tricky and fails sometimes) and disconnects them on a timeout
-1. rustbee-common (lib): Actual implementations of bluetooth devices and common stuff used by the other binaries
+1. **rustbee** (bin): The base module is used as the CLI (Command Line Interface) for light control features: power state (set/get), bightness (set/get), color (set/get), shutdown (and disconnect), gui (to launch the GUI)
+1. **rustbee-gui** (bin): The GUI (Graphical User Interface) that can replace the CLI for a better UX and will also be a WASM module to use the browser instead of native GUI
+1. **rustbee-daemon** (bin): The local filesystem socket running as a background daemon for interprocess communication (IPC) to keep connection with the lights and avoid connect/disconnect on every command (BLE communication is kind of tricky and fails sometimes) and disconnects them on a timeout
+1. **rustbee-common** (lib): Actual implementations of bluetooth devices and common stuff used by the other binaries
 
 ### TODO
 
@@ -104,9 +107,9 @@ rustbee logs
 - - [x] The deamon launch feature should be migrated to common so cli and gui can launch it without bash
 - - [x] setcap of rustbee cli exec to be able to create file socket
 - - [x] setcap of rustbee daemon exec to be able to create log file
+- [ ] Impl a better logging for the daemon and it should log to file itself
 - [ ] CLI should have a logs command to output the log file to stdout
 - [ ] Impl CI to create and publish binaries
-- [ ] Impl a better logging for the daemon and it should log to file itself
 
 ----
 
