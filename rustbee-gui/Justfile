@@ -5,6 +5,7 @@ _default:
 [private]
 @build:
     cargo build --release
+    sudo setcap cap_dac_read_search+ep ./target/release/rustbee-gui
     echo -e "$purple[Rustbee GUI] Finished compiling !$white"
 
 [private]

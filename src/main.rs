@@ -1,8 +1,11 @@
 mod cli;
 
+use std::process;
+
 use clap::Parser;
 use rustbee_common::bluetooth::*;
 use rustbee_common::constants::*;
+use rustbee_common::utils::{launch_daemon, shutdown_daemon};
 
 use cli::Command;
 
@@ -11,6 +14,31 @@ async fn main() -> btleplug::Result<()> {
     let args = cli::Args::parse();
     let command: &mut Command = Box::leak(Box::new(args.command));
     let mut tasks = Vec::new();
+
+    match *command {
+        Command::Gui => {
+            if let Err(err) = process::Command::new("rustbee-gui").output() {
+                eprintln!("ERROR: Couldn't launch rustbee-gui ({err})");
+            }
+
+            return Ok(());
+        }
+        Command::Shutdown { force } => {
+            if let Err(err) = shutdown_daemon(force) {
+                eprintln!("{err}");
+                std::process::exit(1);
+            }
+
+            return Ok(());
+        }
+        Command::Logs => {}
+        _ => (),
+    }
+
+    if let Err(err) = launch_daemon().await {
+        eprintln!("{err}");
+        std::process::exit(1);
+    }
 
     // Returns Result<Vec<HueDevice<Client>>> infered because the Command::handle fn requires a
     // Client variant so the turbofish would be useless

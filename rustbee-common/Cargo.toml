@@ -8,5 +8,5 @@ btleplug = "0.11.5"
 color_space = "0.5.4"
 futures = "0.3.30"
 interprocess = { version = "2.2.0", features = ["tokio"] }
-tokio = { version = "1.39.2", features = ["fs"] }
+tokio = { version = "1.39.2", features = ["fs", "process"] }
 uuid = "1.10.0"

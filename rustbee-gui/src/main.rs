@@ -21,6 +21,7 @@ use rustbee_common::bluetooth::{Client, FoundDevice, HueDevice};
 use rustbee_common::color_space::Rgb;
 use rustbee_common::colors::Xy;
 use rustbee_common::constants::{masks, OutputCode, ADDR_LEN, DATA_LEN, GUI_SAVE_INTERVAL_SECS};
+use rustbee_common::utils::launch_daemon;
 use rustbee_common::{BluetoothAddr, BluetoothPeripheral as _};
 
 const APP_ID: &str = "Rustbee";
@@ -1377,6 +1378,8 @@ fn main() -> eframe::Result {
         persistence_path: eframe::storage_dir(APP_ID),
         ..Default::default()
     };
+
+    rt.block_on(launch_daemon()).unwrap();
 
     // Thread used to init devices state and sync devices state on a timout
     rt.spawn(async move {

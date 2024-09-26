@@ -13,27 +13,30 @@ if &shortmess =~ 'A'
 else
   set shortmess=aoO
 endif
-badd +53 README.md
+badd +59 README.md
 badd +181 rustbee
 badd +1 .gitignore
-badd +556 rustbee-gui/src/main.rs
-badd +11 Cargo.toml
-badd +8 rustbee-common/src/lib.rs
+badd +1382 rustbee-gui/src/main.rs
+badd +9 Cargo.toml
+badd +13 rustbee-common/src/lib.rs
 badd +18 rustbee-common/src/constants.rs
-badd +32 src/main.rs
-badd +63 rustbee-daemon/src/main.rs
+badd +21 src/main.rs
+badd +52 rustbee-daemon/src/main.rs
 badd +130 rustbee-common/src/colors.rs
 badd +654 rustbee-common/src/bluetooth.rs
 badd +13 rustbee-gui/Cargo.toml
-badd +67 src/cli.rs
-badd +7 rustbee-common/Cargo.toml
+badd +42 src/cli.rs
+badd +11 rustbee-common/Cargo.toml
 badd +18 rustbee-common/src/tests.rs
-badd +83 Justfile
+badd +81 Justfile
 badd +8 rustbee-gui/Justfile
-badd +12 rustbee-daemon/Justfile
+badd +14 rustbee-daemon/Justfile
+badd +54 rustbee-common/src/daemon.rs
+badd +1 rustbee-common/src/logs.rs
+badd +7 rustbee-daemon/Cargo.toml
 argglobal
 %argdel
-edit Justfile
+edit rustbee-common/src/daemon.rs
 let s:save_splitbelow = &splitbelow
 let s:save_splitright = &splitright
 set splitbelow splitright
@@ -53,7 +56,7 @@ set winwidth=1
 exe 'vert 1resize ' . ((&columns * 83 + 83) / 167)
 exe 'vert 2resize ' . ((&columns * 83 + 83) / 167)
 argglobal
-balt rustbee-daemon/Justfile
+balt README.md
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -64,12 +67,12 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 15 - ((14 * winheight(0) + 27) / 55)
+let s:l = 54 - ((27 * winheight(0) + 27) / 55)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 15
-normal! 024|
+keepjumps 54
+normal! 06|
 lcd ~/work/rustbee
 wincmd w
 argglobal
@@ -88,11 +91,11 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 127 - ((27 * winheight(0) + 27) / 55)
+let s:l = 100 - ((27 * winheight(0) + 27) / 55)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 127
+keepjumps 100
 normal! 0
 lcd ~/work/rustbee
 wincmd w
@@ -112,7 +115,6 @@ if filereadable(s:sx)
   exe "source " . fnameescape(s:sx)
 endif
 let &g:so = s:so_save | let &g:siso = s:siso_save
-nohlsearch
 doautoall SessionLoadPost
 unlet SessionLoad
 " vim: set ft=vim :

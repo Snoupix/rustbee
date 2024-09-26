@@ -29,6 +29,7 @@ _default:
 # CLI Build
 @build:
     cargo build --release
+    sudo setcap cap_dac_read_search+ep ./target/release/rustbee
     echo -e "$purple[Rustbee CLI] Finished compiling !$white"
     {{DAEMON}} build
 
@@ -77,6 +78,7 @@ install:
     {{DAEMON}} install
 
     sudo ln -sf $PWD/target/release/rustbee /bin/rustbee
+    echo -e "${purple}Rustbee CLI symlinked to /bin dir$white"
     echo -e "${purple}Done! You can now use \`rustbee\` globally$white"
 
 @install-gui:

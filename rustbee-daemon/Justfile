@@ -5,6 +5,7 @@ _default:
 [private]
 @build:
     cargo build --release
+    sudo setcap cap_dac_override+ep ./target/release/rustbee-daemon
     echo -e "$purple[Rustbee Daemon] Finished compiling !$white"
 
 [private]

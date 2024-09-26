@@ -47,12 +47,16 @@ just build-docker
 # Or to compile the GUI
 just build-gui-docker
 
-# Then, you can manually use the executables or let rustbee add a symlink to the binaries on /bin for you
+# Then, you can manually use the executables or let rustbee add a symlink
+# to the binaries on /bin for you
 just install
 # Or, for the GUI
 just install-gui
 
-# If you just wanna stop the rustbee-daemon manually and close (delete) the file socket and if for some reason it doesn't kill the process gracefully, you can use -f or --force to force kill the daemon
+# If you just want to stop the rustbee-daemon manually and close (delete)
+# the file socket and if for some reason it doesn't kill the process
+# gracefully, you can use -f or --force to force kill the daemon and
+# if it says "Permission denied (os error 13)" you have to use sudo with --force
 just shutdown
 
 # If you want to uninstall
@@ -93,16 +97,16 @@ rustbee logs
 - [x] Migrate from bluez to bleplug for interop (lost pair and trust features on the process)
 - [ ] Clarify CLI args (add descriptions)
 - [ ] When finished with GUI impl, try to impl WASM build target
-- [ ] `rustbee gui` should launch the gui executable (get it from PATH)
 - [ ] Impl CLI data lights save and maybe share it with GUI
 - [ ] [CLI] Find a way to select a device with a better UX
 - [x] Impl `justfile` recipes to replace bash script for a better DX and update README for steps
-- [ ] Impl CI to create and publish binaries
-- [ ] The deamon launch feature should be migrated to common so cli and gui can launch it without bash
-- [ ] Impl a better logging for the daemon and it should log to file itself
-- [ ] setcap of rustbee cli exec to be able to create file socket
-- [ ] setcap of rustbee daemon exec to be able to create log file
+- - [x] `rustbee gui` should launch the gui executable
+- - [x] The deamon launch feature should be migrated to common so cli and gui can launch it without bash
+- - [x] setcap of rustbee cli exec to be able to create file socket
+- - [x] setcap of rustbee daemon exec to be able to create log file
 - [ ] CLI should have a logs command to output the log file to stdout
+- [ ] Impl CI to create and publish binaries
+- [ ] Impl a better logging for the daemon and it should log to file itself
 
 ----
 

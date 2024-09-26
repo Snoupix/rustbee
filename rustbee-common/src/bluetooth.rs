@@ -450,10 +450,9 @@ where
 
                 let (code, device_buf) = Self::receive_packet_from_daemon(&mut stream_guard).await;
 
-                match code {
-                    // Failure is already handled by the receive_packet fn above
-                    OutputCode::Failure | OutputCode::StreamEOF => return None,
-                    _ => (),
+                // Failure is already handled by the receive_packet fn above
+                if matches!(code, OutputCode::Failure | OutputCode::StreamEOF) {
+                    return None;
                 }
 
                 drop(stream_guard);

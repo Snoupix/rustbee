@@ -38,7 +38,11 @@ pub enum Command {
         value: Option<u8>,
     },
     Disconnect,
-    Gui,  // Only here for the CLI help
+    Shutdown {
+        #[arg(short = 'f', long)]
+        force: bool,
+    },
+    Gui,
     Logs, // Only here for the CLI help
 }
 
@@ -58,8 +62,10 @@ impl From<&Command> for MaskT {
             Command::ColorXy { .. } => COLOR_XY,
             Command::Brightness { .. } => BRIGHTNESS,
             Command::Disconnect => DISCONNECT,
-            command @ Command::Gui | command @ Command::Logs => {
-                panic!("Cannot use {command:?} command on the CLI script")
+            command @ Command::Gui
+            | command @ Command::Logs
+            | command @ Command::Shutdown { .. } => {
+                unreachable!("This command {command:?} shouldn't communicate with the daemon")
             }
         }
     }
@@ -67,8 +73,8 @@ impl From<&Command> for MaskT {
 
 impl Command {
     pub async fn handle(&self, hue_device: HueDevice<Client>) -> btleplug::Result<()> {
-        if matches!(self, Self::Gui | Self::Logs) {
-            // Should never occur since the bash script intercepts them
+        if matches!(self, Self::Gui | Self::Logs | Self::Shutdown { .. }) {
+            // Should never occur since it's handled before
             return Ok(());
         }
 
@@ -78,7 +84,7 @@ impl Command {
         }
 
         match self {
-            Self::Gui | Self::Logs | Self::PairAndTrust => (),
+            Self::Gui | Self::Logs | Self::Shutdown { .. } | Self::PairAndTrust => (),
             Self::Power { state } => match state {
                 Some(state) => {
                     if !hue_device
