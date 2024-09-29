@@ -71,7 +71,7 @@ To connect a Philips Hue light, you may need the official mobile app [Apple Stor
 
 This will enable the device to be discoverable and then after that, you will have to **pair** and **trust** your device via Bluetooth.
 
-If you can't try again but factory reset your light before.
+If you can't, try again but factory reset your light before.
 
 ```bash
 # To get the CLI commands available

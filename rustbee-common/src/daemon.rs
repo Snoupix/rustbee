@@ -20,11 +20,13 @@ fn get_daemon_process_id() -> io::Result<Option<String>> {
         return Ok(None);
     };
 
-    let Some(offset) = process.trim_start().bytes().position(|c| c == b' ') else {
+    let process = process.trim_start();
+
+    let Some(offset) = process.bytes().position(|c| c == b' ') else {
         return Ok(None);
     };
 
-    Ok(Some(process[..=offset].to_owned()))
+    Ok(Some(process[..offset].to_owned()))
 }
 
 // get running process rustbee-daemon
@@ -94,8 +96,6 @@ pub fn shutdown_daemon(force: bool) -> io::Result<()> {
 
         Command::new("kill")
             .args(["-s", "INT", &pid])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
             .output()
             .unwrap();
     } else if fs::exists(SOCKET_PATH)? {
