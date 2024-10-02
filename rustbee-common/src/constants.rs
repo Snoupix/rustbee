@@ -82,14 +82,13 @@ pub mod flags {
 
     pub const CONNECT: MaskT = 1;
     pub const DISCONNECT: MaskT = 2;
-    pub const PAIR: MaskT = 3;
-    pub const POWER: MaskT = 4;
-    pub const COLOR_RGB: MaskT = 5;
-    pub const COLOR_HEX: MaskT = 6;
-    pub const COLOR_XY: MaskT = 7;
-    pub const BRIGHTNESS: MaskT = 8;
-    pub const NAME: MaskT = 9;
-    pub const SEARCH_NAME: MaskT = 10;
+    pub const POWER: MaskT = 3;
+    pub const COLOR_RGB: MaskT = 4;
+    pub const COLOR_HEX: MaskT = 5;
+    pub const COLOR_XY: MaskT = 6;
+    pub const BRIGHTNESS: MaskT = 7;
+    pub const NAME: MaskT = 8;
+    pub const SEARCH_NAME: MaskT = 9;
 }
 
 pub mod masks {
@@ -97,12 +96,11 @@ pub mod masks {
 
     pub const CONNECT: MaskT = 1 << 0;
     pub const DISCONNECT: MaskT = 1 << 1;
-    pub const PAIR: MaskT = 1 << 2;
-    pub const POWER: MaskT = 1 << 3;
-    pub const COLOR_RGB: MaskT = 1 << 4;
-    pub const COLOR_HEX: MaskT = 1 << 5;
-    pub const COLOR_XY: MaskT = 1 << 6;
-    pub const BRIGHTNESS: MaskT = 1 << 7;
-    pub const NAME: MaskT = 1 << 8;
-    pub const SEARCH_NAME: MaskT = 1 << 9;
+    pub const POWER: MaskT = 1 << 2;
+    pub const COLOR_RGB: MaskT = 1 << 3;
+    pub const COLOR_HEX: MaskT = 1 << 4;
+    pub const COLOR_XY: MaskT = 1 << 5;
+    pub const BRIGHTNESS: MaskT = 1 << 6;
+    pub const NAME: MaskT = 1 << 7;
+    pub const SEARCH_NAME: MaskT = 1 << 8;
 }

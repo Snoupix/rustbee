@@ -14,3 +14,6 @@ pub mod utils {
     pub use super::daemon::*;
     pub use super::logs::*;
 }
+
+#[cfg(feature = "ffi")]
+mod ffi;

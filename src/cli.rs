@@ -17,7 +17,6 @@ pub struct Args {
 
 #[derive(Debug, PartialEq, Subcommand, Clone)]
 pub enum Command {
-    PairAndTrust,
     Power {
         #[command(subcommand)]
         state: Option<State>,
@@ -55,7 +54,6 @@ pub enum State {
 impl From<&Command> for MaskT {
     fn from(value: &Command) -> Self {
         match value {
-            Command::PairAndTrust => PAIR,
             Command::Power { .. } => POWER,
             Command::ColorRgb { .. } => COLOR_RGB,
             Command::ColorHex { .. } => COLOR_HEX,
@@ -78,13 +76,13 @@ impl Command {
             return Ok(());
         }
 
-        if !hue_device.pair().await.is_success() {
-            eprintln!("Error: failed to pair and trust device {}", hue_device.addr);
-            return Ok(());
-        }
+        // if !hue_device.pair().await.is_success() {
+        //     eprintln!("Error: failed to pair and trust device {}", hue_device.addr);
+        //     return Ok(());
+        // }
 
         match self {
-            Self::Gui | Self::Logs | Self::Shutdown { .. } | Self::PairAndTrust => (),
+            Self::Gui | Self::Logs | Self::Shutdown { .. } => (),
             Self::Power { state } => match state {
                 Some(state) => {
                     if !hue_device

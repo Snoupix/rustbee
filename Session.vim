@@ -13,30 +13,32 @@ if &shortmess =~ 'A'
 else
   set shortmess=aoO
 endif
-badd +59 README.md
-badd +181 rustbee
+badd +74 README.md
+badd +100 rustbee
 badd +1 .gitignore
 badd +1382 rustbee-gui/src/main.rs
 badd +9 Cargo.toml
-badd +13 rustbee-common/src/lib.rs
-badd +18 rustbee-common/src/constants.rs
-badd +21 src/main.rs
-badd +52 rustbee-daemon/src/main.rs
+badd +17 rustbee-common/src/lib.rs
+badd +53 rustbee-common/src/constants.rs
+badd +48 src/main.rs
+badd +116 rustbee-daemon/src/main.rs
 badd +130 rustbee-common/src/colors.rs
-badd +654 rustbee-common/src/bluetooth.rs
+badd +545 rustbee-common/src/bluetooth.rs
 badd +13 rustbee-gui/Cargo.toml
-badd +42 src/cli.rs
-badd +11 rustbee-common/Cargo.toml
+badd +176 src/cli.rs
+badd +10 rustbee-common/Cargo.toml
 badd +18 rustbee-common/src/tests.rs
-badd +81 Justfile
+badd +66 Justfile
 badd +8 rustbee-gui/Justfile
-badd +14 rustbee-daemon/Justfile
-badd +54 rustbee-common/src/daemon.rs
+badd +8 rustbee-daemon/Justfile
+badd +29 rustbee-common/src/daemon.rs
 badd +1 rustbee-common/src/logs.rs
 badd +7 rustbee-daemon/Cargo.toml
+badd +9 rustbee-common/librustbee.h
+badd +56 rustbee-common/src/ffi.rs
 argglobal
 %argdel
-edit rustbee-common/src/daemon.rs
+edit rustbee-common/src/ffi.rs
 let s:save_splitbelow = &splitbelow
 let s:save_splitright = &splitright
 set splitbelow splitright
@@ -56,7 +58,7 @@ set winwidth=1
 exe 'vert 1resize ' . ((&columns * 83 + 83) / 167)
 exe 'vert 2resize ' . ((&columns * 83 + 83) / 167)
 argglobal
-balt README.md
+balt rustbee-common/Cargo.toml
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -67,20 +69,20 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 54 - ((27 * winheight(0) + 27) / 55)
+let s:l = 56 - ((27 * winheight(0) + 27) / 55)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 54
-normal! 06|
+keepjumps 56
+normal! 05|
 lcd ~/work/rustbee
 wincmd w
 argglobal
-if bufexists(fnamemodify("~/work/rustbee/rustbee", ":p")) | buffer ~/work/rustbee/rustbee | else | edit ~/work/rustbee/rustbee | endif
+if bufexists(fnamemodify("~/work/rustbee/rustbee-common/librustbee.h", ":p")) | buffer ~/work/rustbee/rustbee-common/librustbee.h | else | edit ~/work/rustbee/rustbee-common/librustbee.h | endif
 if &buftype ==# 'terminal'
-  silent file ~/work/rustbee/rustbee
+  silent file ~/work/rustbee/rustbee-common/librustbee.h
 endif
-balt ~/work/rustbee/Justfile
+balt ~/work/rustbee/rustbee-common/src/ffi.rs
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -91,11 +93,11 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 100 - ((27 * winheight(0) + 27) / 55)
+let s:l = 8 - ((7 * winheight(0) + 27) / 55)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 100
+keepjumps 8
 normal! 0
 lcd ~/work/rustbee
 wincmd w
@@ -115,6 +117,7 @@ if filereadable(s:sx)
   exe "source " . fnameescape(s:sx)
 endif
 let &g:so = s:so_save | let &g:siso = s:siso_save
+nohlsearch
 doautoall SessionLoadPost
 unlet SessionLoad
 " vim: set ft=vim :

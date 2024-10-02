@@ -9,7 +9,10 @@ use btleplug::api::{BDAddr, Central, CentralEvent, Manager as _, Peripheral as _
 use btleplug::platform::{Manager, Peripheral};
 use futures::{future, stream, StreamExt};
 use interprocess::{
-    local_socket::{tokio::Stream, traits::tokio::Stream as _, ToFsName as _},
+    local_socket::{
+        tokio::Stream as TokioStream, traits::tokio::Stream as _, traits::Stream as _,
+        Stream as SyncStream, ToFsName as _,
+    },
     os::unix::local_socket::FilesystemUdSocket,
 };
 use tokio::sync::Mutex;
@@ -21,7 +24,7 @@ use uuid::Uuid;
 
 use crate::constants::{masks::*, *};
 
-const EMPTY_BUFFER: [u8; DATA_LEN + 1] = [0; DATA_LEN + 1];
+pub const EMPTY_BUFFER: [u8; DATA_LEN + 1] = [0; DATA_LEN + 1];
 const ATTEMPTS: u8 = 3;
 
 #[derive(Debug)]
@@ -45,6 +48,9 @@ pub struct FoundDevice {
 pub struct Client;
 #[derive(Clone, Debug, Default)]
 pub struct Server;
+#[cfg(feature = "ffi")]
+#[derive(Clone, Debug, Default)]
+pub struct FFI;
 
 #[derive(Clone, Debug)]
 pub struct HueDevice<Type> {
@@ -63,6 +69,16 @@ impl Default for HueDevice<Server> {
     }
 }
 impl Default for HueDevice<Client> {
+    fn default() -> Self {
+        Self {
+            addr: Default::default(),
+            device: Default::default(),
+            _type: Default::default(),
+        }
+    }
+}
+#[cfg(feature = "ffi")]
+impl Default for HueDevice<FFI> {
     fn default() -> Self {
         Self {
             addr: Default::default(),
@@ -204,53 +220,6 @@ where
         Ok(())
     }
 
-    // pub async fn try_pair(&self) -> btleplug::Result<()> {
-    //     let mut retries = ATTEMPTS;
-    //     let mut error = None;
-    //
-    //     if self.is_connected().await? {
-    //         return Ok(());
-    //     }
-    //
-    //     while !self.is_paired().await? {
-    //         if retries == 0 {
-    //             eprintln!(
-    //                 "[ERROR] Failed to pair device {} after {ATTEMPTS} attempts {:?}",
-    //                 self.addr, error
-    //             );
-    //             return Err(btleplug::Error::Other(Box::new(Error(format!(
-    //                 "Failed to pair device after {ATTEMPTS} attempts"
-    //             )))));
-    //         }
-    //         error = match self.pair().await {
-    //             Ok(_) => break,
-    //             Err(err) => Some(err),
-    //         };
-    //         retries -= 1;
-    //     }
-    //
-    //     retries = ATTEMPTS;
-    //     error = None;
-    //     while !self.is_trusted().await? {
-    //         if retries == 0 {
-    //             eprintln!(
-    //                 "[ERROR] Failed to \"trust\" device {} after {ATTEMPTS} attempts {:?}",
-    //                 self.addr, error
-    //             );
-    //             return Err(btleplug::Error::Other(Box::new(Error(format!(
-    //                 "Failed to trust device after {ATTEMPTS} attempts"
-    //             )))));
-    //         }
-    //         error = match self.set_trusted(true).await {
-    //             Ok(_) => break,
-    //             Err(err) => Some(err),
-    //         };
-    //         retries -= 1;
-    //     }
-    //
-    //     Ok(())
-    // }
-
     pub async fn is_device_connected(&self) -> btleplug::Result<bool> {
         (*self).is_connected().await
     }
@@ -328,16 +297,12 @@ where
     }
 }
 
-type CmdOutput = (OutputCode, [u8; OUTPUT_LEN - 1]);
+pub type CmdOutput = (OutputCode, [u8; OUTPUT_LEN - 1]);
 
 impl HueDevice<Client>
 where
     HueDevice<Client>: Default + std::fmt::Debug,
 {
-    pub async fn pair(&self) -> OutputCode {
-        self.send_packet_to_daemon(PAIR, EMPTY_BUFFER).await.0
-    }
-
     pub async fn set_power(&self, state: bool) -> OutputCode {
         let mut buf = EMPTY_BUFFER;
         buf[0] = SET;
@@ -474,14 +439,14 @@ where
         self.send_packet_to_daemon(CONNECT, buf).await.0
     }
 
-    async fn get_file_socket() -> Stream {
+    async fn get_file_socket() -> TokioStream {
         let fs_name = SOCKET_PATH
             .to_fs_name::<FilesystemUdSocket>()
             .unwrap_or_else(|error| {
                 eprintln!("Error cannot create filesystem path name: {error}");
                 std::process::exit(2);
             });
-        Stream::connect(fs_name).await.unwrap_or_else(|error| {
+        TokioStream::connect(fs_name).await.unwrap_or_else(|error| {
             eprintln!("Error cannot connect to file socket name: {SOCKET_PATH} => {error}");
             std::process::exit(2);
         })
@@ -499,7 +464,7 @@ where
 
     /// Data is DATA_LEN + 1 for set/get flag
     async fn _send_packet_to_daemon(
-        stream: &mut Stream,
+        stream: &mut TokioStream,
         address: Option<[u8; ADDR_LEN]>,
         flags: MaskT,
         data: [u8; DATA_LEN + 1],
@@ -527,12 +492,80 @@ where
         Self::receive_packet_from_daemon(stream).await
     }
 
-    async fn receive_packet_from_daemon(stream: &mut Stream) -> CmdOutput {
+    async fn receive_packet_from_daemon(stream: &mut TokioStream) -> CmdOutput {
         // - 1 since the first byte is the output code
         let mut output = [0; OUTPUT_LEN - 1];
 
         let mut buf = [0; OUTPUT_LEN];
         if let Err(error) = stream.read_exact(&mut buf).await {
+            eprintln!("Error cannot read daemon output, please check /var/log/rustbee-daemon.log file ({error}) buffer: {buf:?}");
+            return (OutputCode::Failure, output);
+        }
+
+        for (i, byte) in buf[1..].iter().enumerate() {
+            output[i] = *byte;
+        }
+
+        (OutputCode::from(buf[0]), output)
+    }
+}
+
+#[cfg(feature = "ffi")]
+impl HueDevice<FFI>
+where
+    HueDevice<FFI>: Default + std::fmt::Debug,
+{
+    pub fn get_file_socket() -> interprocess::local_socket::Stream {
+        let fs_name = SOCKET_PATH
+            .to_fs_name::<FilesystemUdSocket>()
+            .unwrap_or_else(|error| {
+                eprintln!("Error cannot create filesystem path name: {error}");
+                std::process::exit(2);
+            });
+        SyncStream::connect(fs_name).unwrap_or_else(|error| {
+            eprintln!("Error cannot connect to file socket name: {SOCKET_PATH} => {error}");
+            std::process::exit(2);
+        })
+    }
+
+    pub fn send_packet_to_daemon(
+        stream: &mut SyncStream,
+        address: Option<[u8; ADDR_LEN]>,
+        flags: MaskT,
+        data: [u8; DATA_LEN + 1],
+    ) -> CmdOutput {
+        use std::io::Write as _;
+
+        #[allow(unused_assignments)]
+        let mut offset = 0;
+        let mut chunks = [0; BUFFER_LEN];
+        if let Some(addr) = address {
+            for (i, byte) in addr.iter().enumerate() {
+                chunks[i] = *byte;
+            }
+        }
+        offset = ADDR_LEN;
+        chunks[offset] = (flags & 0xff) as _;
+        offset += 1;
+        chunks[offset] = (flags >> 8) as _;
+        offset += 1;
+        for (i, byte) in data.iter().enumerate() {
+            chunks[i + offset] = *byte;
+        }
+
+        stream.write_all(&chunks[..]).unwrap();
+        stream.flush().unwrap();
+
+        Self::receive_packet_from_daemon(stream)
+    }
+
+    fn receive_packet_from_daemon(stream: &mut SyncStream) -> CmdOutput {
+        use std::io::Read as _;
+
+        let mut output = [0; OUTPUT_LEN - 1];
+
+        let mut buf = [0; OUTPUT_LEN];
+        if let Err(error) = stream.read_exact(&mut buf) {
             eprintln!("Error cannot read daemon output, please check /var/log/rustbee-daemon.log file ({error}) buffer: {buf:?}");
             return (OutputCode::Failure, output);
         }

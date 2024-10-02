@@ -61,9 +61,9 @@ build-docker:
 build-gui-docker:
     {{GUI}} build-docker
 
-# Outputs the log path
-@logs:
-    echo -n {{log_path}}
+@build-lib:
+    cd rustbee-common && \
+    cargo rustc --release --features ffi --crate-type=cdylib
 
 @debug-gui:
     {{GUI}} debug
@@ -98,15 +98,3 @@ install:
         -sudo rm $log_path > /dev/null 2>&1; \
     fi
     echo -e "${purple}Rustbee binaries are successfully uninstalled$white"
-
-# TODO: Migrate that feature to the CLI ?
-[doc("Optional flag: --force/-f")]
-[positional-arguments]
-shutdown *force:
-    #!/usr/bin/env bash
-    pid=$(pgrep rustbee-daemon)
-    sudo kill -s INT $pid > /dev/null 2>&1
-    if [[ $? != 0 || $1 == "-f" || $1 == "--force" ]]; then
-        sudo pkill rustbee-daemon
-        sudo rm -f {{socket_path}}
-    fi

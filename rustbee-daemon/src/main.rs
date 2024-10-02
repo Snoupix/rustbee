@@ -28,7 +28,6 @@ const FOUND_DEVICE_TIMEOUT_SECS: u64 = 30;
 #[derive(Debug, PartialEq)]
 enum Command {
     Connect,
-    PairAndTrust,
     Power,
     ColorRgb,
     ColorHex,
@@ -80,7 +79,10 @@ async fn main() {
 
     loop {
         tokio::select! {
-            _ = signal::ctrl_c() => break,
+            _ = signal::ctrl_c() => {
+                println!("[Rustbee Daemon] SIGINT received, disconnecting...");
+                break;
+            },
             timeout = time::timeout(Duration::from_secs(TIMEOUT_SECS), listener.accept()) => {
                 let Ok(conn) = timeout else {
                     // Timed out
@@ -276,7 +278,6 @@ async fn process_conn(
             for command in commands {
                 let value = match command {
                     Command::Connect | Command::SearchName => continue,
-                    Command::PairAndTrust => OutputCode::Success.into(), // res_to_u8!(hue_device.try_pair().await),
                     Command::Disconnect => res_to_u8!(hue_device.try_disconnect().await),
                     Command::Power { .. } => {
                         if set {
@@ -388,9 +389,6 @@ fn get_commands_from_flags(flags: MaskT) -> Vec<Command> {
     // Could also do flags & CONNECT == CONNECT where connect is the mask
     if (flags >> (CONNECT - 1)) & 1 == 1 {
         v.push(Command::Connect);
-    }
-    if (flags >> (PAIR - 1)) & 1 == 1 {
-        v.push(Command::PairAndTrust);
     }
     if (flags >> (POWER - 1)) & 1 == 1 {
         v.push(Command::Power)
