@@ -11,17 +11,29 @@ use rustbee_common::constants::{masks::*, MaskT, ADDR_LEN};
 pub struct Args {
     #[command(subcommand)]
     pub command: Command,
-    #[arg(short = 'a', long = "addresses")]
+    #[arg(
+        short = 'a',
+        long = "addresses",
+        help = "Use device(s) MAC address(es) with this format: xx:xx:xx:xx:xx:xx. It's case-insensitive and space separated if more than one"
+    )]
     pub hex_mac_addresses: Option<Vec<String>>,
     #[arg(
         short = '1',
         long = "one-shot",
         num_args = 0,
-        default_missing_value = "0",
         global = true,
         help = "If specified, it will shutdown the daemon after the command"
     )]
-    pub one_shot: Option<u8>,
+    pub one_shot: bool,
+    #[arg(
+        short,
+        long,
+        default_value = "false",
+        default_missing_value = "true",
+        global = true,
+        help = "If specified, it will save the MAC address(es) so you can use the CLI again without specifying them"
+    )]
+    pub save: bool,
 }
 
 #[derive(Debug, PartialEq, Subcommand, Clone)]
@@ -31,27 +43,38 @@ pub enum Command {
         state: Option<State>,
     },
     ColorRgb {
+        #[arg(help = "Positive number from 0 to 255 inclusive")]
         r: Option<u8>,
+        #[arg(help = "Positive number from 0 to 255 inclusive")]
         g: Option<u8>,
+        #[arg(help = "Positive number from 0 to 255 inclusive")]
         b: Option<u8>,
     },
     ColorHex {
+        #[arg(help = "Case insensitive e.g. ff00FF")]
         hex: Option<String>,
     },
     ColorXy {
+        #[arg(help = "Positive decimal number from 0.000 to 1.000 inclusive")]
         x: Option<f64>,
+        #[arg(help = "Positive decimal number from 0.000 to 1.000 inclusive")]
         y: Option<f64>,
     },
     Brightness {
+        #[arg(help = "Positive number (percentage) from 0 to 100 inclusive")]
         value: Option<u8>,
     },
     Disconnect,
     Shutdown {
-        #[arg(short = 'f', long)]
+        #[arg(
+            short = 'f',
+            long,
+            help = "If specified, force the shutdown by killing the process instead of gracefully shutting it down"
+        )]
         force: bool,
     },
     Gui,
-    Logs, // Only here for the CLI help
+    Logs,
 }
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
@@ -222,7 +245,7 @@ impl Command {
                             let hex = hex.clone().unwrap();
                             assert!(
                                 hex.len() == ADDR_LEN,
-                                "Hex lenght must be {ADDR_LEN} like so: ffFF00"
+                                "Hex length must be {ADDR_LEN} like so: ffFF00"
                             );
                             let odd_it = hex.chars().skip(1).step_by(2);
                             let [r, g, b] = hex

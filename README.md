@@ -98,7 +98,7 @@ just logs
 
 - [ ] Impl interop for the daemon socket (path...)
 - [x] Migrate from bluez to bleplug for interop (lost pair and trust features on the process)
-- [ ] Clarify CLI args (add descriptions)
+- [x] Clarify CLI args (add descriptions)
 - [ ] When finished with GUI impl, try to impl WASM build target
 - [ ] Impl CLI data lights save and maybe share it with GUI
 - [ ] [CLI] Find a way to select a device with a better UX

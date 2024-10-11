@@ -14,7 +14,6 @@ async fn main() -> btleplug::Result<()> {
     let args = cli::Args::parse();
     let command: &mut Command = Box::leak(Box::new(args.command));
     let mut tasks = Vec::new();
-    let shutdown = args.one_shot.is_some();
 
     match *command {
         Command::Gui => {
@@ -61,7 +60,7 @@ async fn main() -> btleplug::Result<()> {
         task.await.expect("Failed to spawn async tokio task")?;
     }
 
-    if shutdown {
+    if args.one_shot {
         return shutdown_daemon(false).map_err(|err| btleplug::Error::Other(Box::new(err)));
     }
 
