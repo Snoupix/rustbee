@@ -13,6 +13,15 @@ pub struct Args {
     pub command: Command,
     #[arg(short = 'a', long = "addresses")]
     pub hex_mac_addresses: Option<Vec<String>>,
+    #[arg(
+        short = '1',
+        long = "one-shot",
+        num_args = 0,
+        default_missing_value = "0",
+        global = true,
+        help = "If specified, it will shutdown the daemon after the command"
+    )]
+    pub one_shot: Option<u8>,
 }
 
 #[derive(Debug, PartialEq, Subcommand, Clone)]

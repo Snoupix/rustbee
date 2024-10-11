@@ -25,7 +25,7 @@ badd +116 rustbee-daemon/src/main.rs
 badd +130 rustbee-common/src/colors.rs
 badd +545 rustbee-common/src/bluetooth.rs
 badd +13 rustbee-gui/Cargo.toml
-badd +176 src/cli.rs
+badd +351 src/cli.rs
 badd +10 rustbee-common/Cargo.toml
 badd +18 rustbee-common/src/tests.rs
 badd +66 Justfile
@@ -38,7 +38,7 @@ badd +9 rustbee-common/librustbee.h
 badd +56 rustbee-common/src/ffi.rs
 argglobal
 %argdel
-edit rustbee-common/src/ffi.rs
+edit src/cli.rs
 let s:save_splitbelow = &splitbelow
 let s:save_splitright = &splitright
 set splitbelow splitright
@@ -55,10 +55,8 @@ set winminheight=0
 set winheight=1
 set winminwidth=0
 set winwidth=1
-exe 'vert 1resize ' . ((&columns * 83 + 83) / 167)
-exe 'vert 2resize ' . ((&columns * 83 + 83) / 167)
+wincmd =
 argglobal
-balt rustbee-common/Cargo.toml
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -69,12 +67,12 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 56 - ((27 * winheight(0) + 27) / 55)
+let s:l = 345 - ((27 * winheight(0) + 27) / 55)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 56
-normal! 05|
+keepjumps 345
+normal! 037|
 lcd ~/work/rustbee
 wincmd w
 argglobal
@@ -101,8 +99,7 @@ keepjumps 8
 normal! 0
 lcd ~/work/rustbee
 wincmd w
-exe 'vert 1resize ' . ((&columns * 83 + 83) / 167)
-exe 'vert 2resize ' . ((&columns * 83 + 83) / 167)
+wincmd =
 tabnext 1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0 && getbufvar(s:wipebuf, '&buftype') isnot# 'terminal'
   silent exe 'bwipe ' . s:wipebuf

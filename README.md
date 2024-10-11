@@ -96,7 +96,7 @@ just logs
 
 ### TODO
 
-- [ ] Migrate from unix domain socket to local_socket for interop
+- [ ] Impl interop for the daemon socket (path...)
 - [x] Migrate from bluez to bleplug for interop (lost pair and trust features on the process)
 - [ ] Clarify CLI args (add descriptions)
 - [ ] When finished with GUI impl, try to impl WASM build target
