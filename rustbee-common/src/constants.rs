@@ -2,6 +2,7 @@ use uuid::{uuid, Uuid};
 
 pub type MaskT = u16;
 
+pub const APP_ID: &str = "Rustbee";
 pub const HUE_BAR_1_ADDR: [u8; ADDR_LEN] = [0xE8, 0xD4, 0xEA, 0xC4, 0x62, 0x00];
 pub const HUE_BAR_2_ADDR: [u8; ADDR_LEN] = [0xEC, 0x27, 0xA7, 0xD6, 0x5A, 0x9C];
 
@@ -15,8 +16,8 @@ pub const MISC_SERVICES_UUID: Uuid = uuid!("0000180a-0000-1000-8000-00805f9b34fb
 pub const MODEL_UUID: Uuid = uuid!("00002a24-0000-1000-8000-00805f9b34fb");
 pub const MANUFACTURER_UUID: Uuid = uuid!("00002a29-0000-1000-8000-00805f9b34fb");
 
-pub const SOCKET_PATH: &str = "/var/run/rustbee-daemon.sock"; // Needs to be sudo bc /var is root owned
-pub const LOG_PATH: &str = "/var/log/rustbee-daemon.log"; // Needs to be sudo bc /var is root owned
+pub const SOCKET_PATH: &str = "/var/run/rustbee-daemon.sock";
+pub const LOG_PATH: &str = "/var/log/rustbee-daemon.log";
 
 /// Buffer input
 /// Sent by the client

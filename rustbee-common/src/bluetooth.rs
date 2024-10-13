@@ -9,10 +9,7 @@ use btleplug::api::{BDAddr, Central, CentralEvent, Manager as _, Peripheral as _
 use btleplug::platform::{Manager, Peripheral};
 use futures::{future, stream, StreamExt};
 use interprocess::{
-    local_socket::{
-        tokio::Stream as TokioStream, traits::tokio::Stream as _, traits::Stream as _,
-        Stream as SyncStream, ToFsName as _,
-    },
+    local_socket::{tokio::Stream as TokioStream, traits::tokio::Stream as _, ToFsName as _},
     os::unix::local_socket::FilesystemUdSocket,
 };
 use tokio::sync::Mutex;
@@ -21,6 +18,9 @@ use tokio::{
     time::{self, sleep},
 };
 use uuid::Uuid;
+
+#[cfg(feature = "ffi")]
+use interprocess::local_socket::{traits::Stream as _, Stream as SyncStream};
 
 use crate::constants::{masks::*, *};
 
@@ -229,7 +229,7 @@ where
             .read_gatt_char(&LIGHT_SERVICES_UUID, &POWER_UUID)
             .await?;
         if let Some(bytes) = read {
-            Ok(*bytes.first().unwrap() == true as _)
+            Ok(*bytes.first().unwrap() == true as u8)
         } else {
             Err(btleplug::Error::Other(Box::new(Error (
                 format!("[ERROR] Service or Characteristic \"{POWER_UUID}\" for \"{LIGHT_SERVICES_UUID}\" not found for device {}", self.addr)

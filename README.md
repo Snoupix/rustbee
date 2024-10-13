@@ -100,8 +100,9 @@ just logs
 - [x] Migrate from bluez to bleplug for interop (lost pair and trust features on the process)
 - [x] Clarify CLI args (add descriptions)
 - [ ] When finished with GUI impl, try to impl WASM build target
-- [ ] Impl CLI data lights save and maybe share it with GUI
-- [ ] [CLI] Find a way to select a device with a better UX
+- [x] Impl CLI data lights save and maybe share it with GUI
+- - [x] Impl shared Storage using ~eframe::Storage trait~ (didn't because it links String to String and I would parse data all around)
+- [ ] [CLI] Find a way to select a device with a better UX ?
 - [x] Impl `justfile` recipes to replace bash script for a better DX and update README for steps
 - - [x] `rustbee gui` should launch the gui executable
 - - [x] The deamon launch feature should be migrated to common so cli and gui can launch it without bash

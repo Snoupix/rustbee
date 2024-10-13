@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -9,7 +8,6 @@ use eframe::egui::*;
 use eframe::{CreationContext, NativeOptions};
 use egui_extras::{Size, StripBuilder};
 use futures::{FutureExt, StreamExt as _};
-use serde_json::json;
 use tokio::runtime::{self, Runtime};
 use tokio::sync::{
     watch::{channel, Receiver},
@@ -20,11 +18,13 @@ use tokio::time::{self, Instant};
 use rustbee_common::bluetooth::{Client, FoundDevice, HueDevice};
 use rustbee_common::color_space::Rgb;
 use rustbee_common::colors::Xy;
-use rustbee_common::constants::{masks, OutputCode, ADDR_LEN, DATA_LEN, GUI_SAVE_INTERVAL_SECS};
+use rustbee_common::constants::{
+    masks, OutputCode, ADDR_LEN, APP_ID, DATA_LEN, GUI_SAVE_INTERVAL_SECS,
+};
+use rustbee_common::storage::{SavedDevice, Storage};
 use rustbee_common::utils::launch_daemon;
 use rustbee_common::{BluetoothAddr, BluetoothPeripheral as _};
 
-const APP_ID: &str = "Rustbee";
 const FONT_NAME: &str = "monaspace";
 // When adding a SVG, add `fill="#FFFFFF"` to the path tag because egui expect svgs to be white by
 // default so it can "tint" => multiply base values to a color and if it's black, so #000000, it's
@@ -114,18 +114,9 @@ impl From<HueDevice<Client>> for HueDeviceWrapper {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-struct SavedDevice {
-    address: [u8; ADDR_LEN],
-    name: String,
-    current_color: [u8; 3],
-    brightness: u8,
-}
-
 impl From<&HueDeviceWrapper> for SavedDevice {
     fn from(device: &HueDeviceWrapper) -> Self {
         Self {
-            address: device.addr.into_inner(),
             name: device.name.clone(),
             current_color: *device.current_color,
             brightness: device.brightness,
@@ -213,6 +204,7 @@ struct App {
     new_device_addr: String,
     is_new_device_addr_error: bool,
     channel: Option<Receiver<bool>>,
+    storage: Storage,
 }
 
 impl App {
@@ -220,6 +212,7 @@ impl App {
         cc: &CreationContext<'_>,
         devices: Arc<RwLock<AppDevices>>,
         tokio_rt: Runtime,
+        mut storage: Storage,
     ) -> Box<Self> {
         // Customize egui here with cc.egui_ctx.set_fonts and cc.egui_ctx.set_visuals.
         // Restore app state using cc.storage (requires the "persistence" feature).
@@ -265,32 +258,16 @@ impl App {
 
         let mut devices_guard = tokio_rt.block_on(devices.write());
 
-        if let Some(state) = cc.storage {
-            for device in state
-                .get_string("devices")
-                .map(|devices_str| {
-                    serde_json::Value::from_str(&devices_str)
-                        .unwrap_or(json!([]))
-                        .as_array()
-                        .cloned()
-                        .unwrap_or(Vec::new())
-                        .into_iter()
-                        .map(|val| serde_json::from_value::<SavedDevice>(val).unwrap())
-                        .collect()
-                })
-                .unwrap_or(Vec::new())
-            {
-                let mut hue_device =
-                    HueDeviceWrapper::from_address(BluetoothAddr::from(device.address));
-                hue_device.name = device.name;
-                hue_device.current_color =
-                    Debounce::new(device.current_color, Duration::from_secs(DEBOUNCE_SECS));
+        for (addr, device) in storage.get_devices() {
+            let mut hue_device = HueDeviceWrapper::from_address(BluetoothAddr::from(*addr));
+            hue_device.name = device.name.clone();
+            hue_device.current_color =
+                Debounce::new(device.current_color, Duration::from_secs(DEBOUNCE_SECS));
 
-                devices_guard.insert(device.address, hue_device);
-            }
+            devices_guard.insert(*addr, hue_device);
         }
 
-        let lower_brightness = devices_guard.iter().fold(100u8, |v, (_, device)| {
+        let lowest_brightness = devices_guard.iter().fold(100u8, |v, (_, device)| {
             if device.brightness < v {
                 device.brightness
             } else {
@@ -303,8 +280,9 @@ impl App {
         Box::new(Self {
             devices,
             tokio_rt,
+            storage,
             devices_color: Debounce::new([0; 3], Duration::from_secs(DEBOUNCE_SECS)),
-            devices_brightness: Debounce::new(lower_brightness, Duration::from_secs(1)),
+            devices_brightness: Debounce::new(lowest_brightness, Duration::from_secs(1)),
             device_error: None,
             device_name_search: String::new(),
             devices_found: Arc::new(RwLock::new(Vec::new())),
@@ -864,7 +842,7 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         let devices = Arc::clone(&self.devices);
 
         TopBottomPanel::top("banner")
@@ -1069,7 +1047,7 @@ impl eframe::App for App {
                                     ));
 
                                     if btn.hovered() {
-                                        btn.show_tooltip_text("Pair to this device");
+                                        btn.show_tooltip_text("Add this device");
                                     }
 
                                     if btn.clicked() {
@@ -1081,20 +1059,9 @@ impl eframe::App for App {
                                             drop(devices_read);
 
                                             let mut devices = devices.write().await;
-                                            let mut device = HueDeviceWrapper::from_address(
+                                            let device = HueDeviceWrapper::from_address(
                                                 BluetoothAddr::from(addr),
                                             );
-
-                                            match device.pair().await {
-                                                OutputCode::Success => {
-                                                    device.is_paired = true;
-                                                    device.is_found = true;
-                                                }
-                                                _ => {
-                                                    device.is_paired = false;
-                                                    device.is_found = false;
-                                                }
-                                            }
 
                                             devices.insert(addr, device);
                                             true
@@ -1343,26 +1310,18 @@ impl eframe::App for App {
         Duration::from_secs(GUI_SAVE_INTERVAL_SECS)
     }
 
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+    fn save(&mut self, _: &mut dyn eframe::Storage) {
         let devices_ref = Arc::clone(&self.devices);
         let devices = self.tokio_rt.block_on(devices_ref.read());
 
-        storage.set_string(
-            "devices",
-            json!(devices
-                .values()
-                .map(SavedDevice::from)
-                .map(|device| json!({
-                    "name": device.name,
-                    "address": device.address,
-                    "current_color": device.current_color,
-                    "brightness": device.brightness,
-                }))
-                .collect::<Vec<_>>())
-            .to_string(),
+        self.storage.set_devices(
+            devices
+                .iter()
+                .map(|(addr, device)| (*addr, Some(SavedDevice::from(device))))
+                .collect(),
         );
 
-        storage.flush();
+        self.storage.flush();
     }
 }
 
@@ -1375,7 +1334,6 @@ fn main() -> eframe::Result {
         Box::leak(Box::new(Arc::new(RwLock::new(HashMap::new()))));
     let state_async = Arc::clone(state);
     let app_options = NativeOptions {
-        persistence_path: eframe::storage_dir(APP_ID),
         ..Default::default()
     };
 
@@ -1416,7 +1374,15 @@ fn main() -> eframe::Result {
     eframe::run_native(
         APP_ID,
         app_options,
-        Box::new(|cc| Ok(App::new(cc, Arc::clone(state), rt))),
+        Box::new(|cc| {
+            Ok(App::new(
+                cc,
+                Arc::clone(state),
+                rt,
+                // TODO: Handle a fallback path
+                Storage::try_default().unwrap(),
+            ))
+        }),
     )?;
 
     Ok(())

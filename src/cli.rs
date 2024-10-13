@@ -14,6 +14,9 @@ pub struct Args {
     #[arg(
         short = 'a',
         long = "addresses",
+        num_args = 1..,
+        value_delimiter = ' ',
+        global = true,
         help = "Use device(s) MAC address(es) with this format: xx:xx:xx:xx:xx:xx. It's case-insensitive and space separated if more than one"
     )]
     pub hex_mac_addresses: Option<Vec<String>>,

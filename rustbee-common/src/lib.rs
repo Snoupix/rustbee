@@ -1,6 +1,8 @@
 pub mod bluetooth;
 pub mod colors;
 pub mod constants;
+pub mod storage;
+
 mod daemon;
 mod logs;
 
