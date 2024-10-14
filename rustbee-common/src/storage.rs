@@ -62,8 +62,16 @@ impl Storage {
     }
 
     fn load_from_file(&mut self) {
-        let mut file =
-            File::open(&self.path).expect("Failed to open saved data file in read-only {err}");
+        let mut file = match File::open(&self.path) {
+            Ok(file) => file,
+            Err(err) => {
+                if !matches!(err.kind(), std::io::ErrorKind::NotFound) {
+                    panic!("Failed to open saved data file in read-only {err}");
+                }
+                return;
+            }
+        };
+
         let mut content = String::new();
         file.read_to_string(&mut content)
             .expect("Failed to read from storage file");

@@ -20,10 +20,13 @@ use rustbee_common::bluetooth::*;
 use rustbee_common::constants::{
     MaskT, OutputCode, ADDR_LEN, BUFFER_LEN, OUTPUT_LEN, SET, SOCKET_PATH,
 };
+use rustbee_common::logger::*;
 use rustbee_common::BluetoothPeripheral as _;
 
 const TIMEOUT_SECS: u64 = 60 * 2;
 const FOUND_DEVICE_TIMEOUT_SECS: u64 = 30;
+
+static LOGGER: Logger = Logger::new("Rustbee-Daemon", false);
 
 #[derive(Debug, PartialEq)]
 enum Command {
@@ -49,15 +52,17 @@ macro_rules! res_to_u8 {
 async fn main() {
     check_if_path_is_writable().await;
 
+    LOGGER.init();
+
     if Path::new(SOCKET_PATH).exists() {
-        eprintln!("Error: socket is already in use, an instance might already be running");
+        error!("Error: socket is already in use, an instance might already be running");
         std::process::exit(2);
     }
 
     let fs_name = SOCKET_PATH
         .to_fs_name::<FilesystemUdSocket>()
         .unwrap_or_else(|error| {
-            eprintln!("Error cannot create filesystem path name: {SOCKET_PATH} => {error}");
+            error!("Error cannot create filesystem path name: {SOCKET_PATH} => {error}");
             std::process::exit(1);
         });
 
@@ -69,7 +74,7 @@ async fn main() {
     let listener = match socket {
         Ok(listener) => listener,
         Err(error) => {
-            eprintln!("Error on spawning local socket: {error}");
+            error!("Error on spawning local socket: {error}");
             std::process::exit(1);
         }
     };
@@ -80,7 +85,7 @@ async fn main() {
     loop {
         tokio::select! {
             _ = signal::ctrl_c() => {
-                println!("[Rustbee Daemon] SIGINT received, disconnecting...");
+                warn!("SIGINT received, disconnecting...");
                 break;
             },
             timeout = time::timeout(Duration::from_secs(TIMEOUT_SECS), listener.accept()) => {
@@ -115,7 +120,7 @@ async fn process_conn(
         Ok(mut stream) => {
             let mut buf = [0; BUFFER_LEN];
             if let Err(error) = stream.read_exact(&mut buf).await {
-                eprintln!("Unexpected error on reading chunks: {error}");
+                error!("Unexpected error on reading chunks: {error}");
                 return;
             }
             let mut addr = [0; ADDR_LEN];
@@ -131,12 +136,12 @@ async fn process_conn(
 
             let mut commands = get_commands_from_flags(flags);
 
-            // println!("{buf:?}");
-            // println!(
-            //     "addr: {:?} flags: {} set {} data: {:?}",
-            //     addr, flags, set, data
-            // );
-            // println!("{addr:?} {commands:?}");
+            debug!("{buf:?}");
+            debug!(
+                "addr: {:?} flags: {} set {} data: {:?}",
+                addr, flags, set, data
+            );
+            debug!("addr: {addr:?} commands: {commands:?}");
 
             // Commands that are executed alone and only alone without the need to fetch the device
             if commands.contains(&Command::SearchName) {
@@ -197,9 +202,7 @@ async fn process_conn(
                 {
                     Err(elapsed) => {
                         // Timed out
-                        eprintln!(
-                            "[WARN] Timeout: {elapsed} during device discovery, address: {addr:?}"
-                        );
+                        warn!("Timeout: {elapsed} during device discovery, address: {addr:?}");
                         send_output_code(&mut stream, OutputCode::DeviceNotFound).await;
                         return;
                     }
@@ -207,14 +210,14 @@ async fn process_conn(
                         let myb_device = match value {
                             Ok(myb_device) => myb_device,
                             Err(err) => {
-                                eprintln!("[ERROR] Cannot get device, address: {addr:?} {err:?}");
+                                error!("Cannot get device, address: {addr:?} {err:?}");
                                 send_output_code(&mut stream, OutputCode::Failure).await;
                                 return;
                             }
                         };
 
                         let Some(device) = myb_device else {
-                            eprintln!("[WARN] Device not found or not in range, address: {addr:?}");
+                            warn!("Device not found or not in range, address: {addr:?}");
                             send_output_code(&mut stream, OutputCode::DeviceNotFound).await;
                             return;
                         };
@@ -241,7 +244,7 @@ async fn process_conn(
 
             if hue_device.services().is_empty() {
                 // if let Err(error) = hue_device.try_pair().await {
-                //     eprintln!(
+                //     error!(
                 //         "Unexpected error trying to pair with device {}: {error}",
                 //         hue_device.addr
                 //     );
@@ -249,7 +252,7 @@ async fn process_conn(
                 //     return;
                 // }
                 if let Err(error) = hue_device.try_connect().await {
-                    eprintln!(
+                    error!(
                         "Unexpected error trying to connect with device {}: {error}",
                         hue_device.addr
                     );
@@ -257,7 +260,7 @@ async fn process_conn(
                     return;
                 }
                 if let Err(error) = hue_device.discover_services().await {
-                    eprintln!("Unexpected error trying get GATT characteristics and services with device {}: {error}", hue_device.addr);
+                    error!("Unexpected error trying get GATT characteristics and services with device {}: {error}", hue_device.addr);
                     devices.remove(&addr).unwrap();
                     return;
                 }
@@ -345,7 +348,7 @@ async fn process_conn(
                 send_to_stream(&mut stream, output_buf).await;
             }
         }
-        Err(error) => eprintln!("Error on connection: {error}"),
+        Err(error) => error!("Error on connection: {error}"),
     }
 }
 
@@ -362,7 +365,7 @@ async fn send_output_code(stream: &mut Stream, output_code: OutputCode) {
 
 async fn check_if_path_is_writable() {
     if fs::read_dir("/var/run").await.is_err() {
-        eprintln!("Cannot find /var/run directory or lacking permissions to read it");
+        error!("Cannot find /var/run directory or lacking permissions to read it");
         std::process::exit(2);
     }
 
@@ -374,7 +377,7 @@ async fn check_if_path_is_writable() {
         .await
         .is_err()
     {
-        eprintln!("Lacking permissions to write to /var/run directory");
+        error!("Lacking permissions to write to /var/run directory");
         std::process::exit(2);
     }
 

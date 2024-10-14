@@ -29,7 +29,7 @@ _default:
 # CLI Build
 @build:
     cargo build --release
-    sudo setcap cap_dac_read_search+ep ./target/release/rustbee
+    sudo setcap cap_dac_override,cap_dac_read_search+ep ./target/release/rustbee
     echo -e "$purple[Rustbee CLI] Finished compiling !$white"
     {{DAEMON}} build
 
@@ -56,11 +56,15 @@ build-docker:
     sudo chown -R $(id -u):$(id -g) ./target
     sudo chown -R $(id -u):$(id -g) ./rustbee-daemon/target
 
+    sudo setcap cap_dac_override,cap_dac_read_search+ep ./target/release/rustbee
+    sudo setcap cap_dac_override+ep ./rustbee-daemon/target/release/rustbee-daemon
+
     echo -e "${purple}Done! You can now run \`just install-cli\` to install rustbee CLI$white"
 
 build-gui-docker:
     {{GUI}} build-docker
 
+# Build C dynamic lib on rustbee-common/target/release/librustbee_common.so
 @build-lib:
     cd rustbee-common && \
     cargo rustc --release --features ffi --crate-type=cdylib

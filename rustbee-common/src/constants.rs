@@ -17,7 +17,10 @@ pub const MODEL_UUID: Uuid = uuid!("00002a24-0000-1000-8000-00805f9b34fb");
 pub const MANUFACTURER_UUID: Uuid = uuid!("00002a29-0000-1000-8000-00805f9b34fb");
 
 pub const SOCKET_PATH: &str = "/var/run/rustbee-daemon.sock";
-pub const LOG_PATH: &str = "/var/log/rustbee-daemon.log";
+pub const LOG_PATH: &str = "/var/log/rustbee.log";
+
+// Levels ERROR < WARN < INFO < DEBUG < TRACE
+pub const LOG_LEVEL: log::Level = log::Level::Debug;
 
 /// Buffer input
 /// Sent by the client

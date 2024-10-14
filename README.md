@@ -108,9 +108,10 @@ just logs
 - - [x] The deamon launch feature should be migrated to common so cli and gui can launch it without bash
 - - [x] setcap of rustbee cli exec to be able to create file socket
 - - [x] setcap of rustbee daemon exec to be able to create log file
-- [ ] Impl a better logging for the daemon and it should log to file itself
-- [ ] CLI should have a logs command to output the log file to stdout
+- [x] Impl a better logging for the daemon and it should log to file itself
+- [x] CLI should have a logs command to output the log file to stdout
 - [ ] Impl CI to create and publish binaries
+- [ ] Impl unit and integration tests
 
 ----
 

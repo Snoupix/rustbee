@@ -5,11 +5,14 @@ use std::process;
 
 use clap::Parser;
 use rustbee_common::bluetooth::*;
+use rustbee_common::logger::*;
 use rustbee_common::storage::Storage;
 use rustbee_common::utils::{launch_daemon, shutdown_daemon};
 
 use address::*;
 use cli::Command;
+
+static LOGGER: Logger = Logger::new("Rustbee-CLI", true);
 
 #[tokio::main]
 async fn main() -> btleplug::Result<()> {
@@ -19,29 +22,46 @@ async fn main() -> btleplug::Result<()> {
     let mut storage = Storage::try_default()
         .unwrap_or_else(|_| Storage::new(unimplemented!("Fallback path unimplemented")));
 
+    LOGGER.init();
+
     match *command {
         Command::Gui => {
-            if let Err(err) = process::Command::new("rustbee-gui").output() {
-                eprintln!("ERROR: Couldn't launch rustbee-gui ({err})");
+            if let Err(err) = process::Command::new("rustbee-gui").spawn() {
+                error!("ERROR: Couldn't launch rustbee-gui ({err})");
             }
 
             return Ok(());
         }
         Command::Shutdown { force } => {
             if let Err(err) = shutdown_daemon(force) {
-                eprintln!("{err}");
+                error!("{err}");
                 std::process::exit(1);
             }
 
             return Ok(());
         }
-        Command::Logs => {}
-        _ => (),
-    }
+        Command::Logs {
+            follow,
+            tail,
+            purge,
+        } => {
+            if purge {
+                LOGGER.purge();
 
-    if let Err(err) = launch_daemon().await {
-        eprintln!("{err}");
-        std::process::exit(1);
+                return Ok(());
+            }
+
+            if follow {
+                LOGGER.follow().await;
+
+                return Ok(());
+            }
+
+            LOGGER.print(tail);
+
+            return Ok(());
+        }
+        _ => (),
     }
 
     let addresses = match &args.hex_mac_addresses {
@@ -49,12 +69,19 @@ async fn main() -> btleplug::Result<()> {
             .iter()
             .map(|s| parse_hex_address(s))
             .collect::<Vec<_>>(),
-        None => storage
-            .get_devices()
-            .iter()
-            .map(|(addr, _)| *addr)
-            .collect(),
+        None => storage.get_devices().keys().copied().collect(),
     };
+
+    if addresses.is_empty() {
+        error!("No device MAC address(es) specified nor found on local storage");
+        return Ok(());
+    }
+
+    if let Err(err) = launch_daemon().await {
+        error!("{err}");
+        std::process::exit(1);
+    }
+
     // Returns Result<Vec<HueDevice<Client>>> infered because the Command::handle fn requires a
     // Client variant so the turbofish would be useless
     let hue_devices = get_devices(&addresses).await?;

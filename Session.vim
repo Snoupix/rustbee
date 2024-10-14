@@ -18,26 +18,26 @@ badd +100 rustbee
 badd +1 .gitignore
 badd +261 rustbee-gui/src/main.rs
 badd +9 Cargo.toml
-badd +5 rustbee-common/src/lib.rs
-badd +5 rustbee-common/src/constants.rs
-badd +50 src/main.rs
-badd +116 rustbee-daemon/src/main.rs
+badd +7 rustbee-common/src/lib.rs
+badd +23 rustbee-common/src/constants.rs
+badd +52 src/main.rs
+badd +89 rustbee-daemon/src/main.rs
 badd +130 rustbee-common/src/colors.rs
 badd +22 rustbee-common/src/bluetooth.rs
 badd +11 rustbee-gui/Cargo.toml
-badd +17 src/cli.rs
-badd +19 rustbee-common/Cargo.toml
+badd +127 src/cli.rs
+badd +23 rustbee-common/Cargo.toml
 badd +18 rustbee-common/src/tests.rs
-badd +66 Justfile
+badd +33 Justfile
 badd +8 rustbee-gui/Justfile
 badd +8 rustbee-daemon/Justfile
 badd +29 rustbee-common/src/daemon.rs
-badd +1 rustbee-common/src/logs.rs
 badd +10 rustbee-daemon/Cargo.toml
 badd +8 rustbee-common/librustbee.h
 badd +56 rustbee-common/src/ffi.rs
-badd +57 rustbee-common/src/storage.rs
+badd +73 rustbee-common/src/storage.rs
 badd +9 src/address.rs
+badd +90 rustbee-common/src/logger.rs
 argglobal
 %argdel
 edit src/main.rs
@@ -49,7 +49,7 @@ set winheight=1
 set winminwidth=0
 set winwidth=1
 argglobal
-balt rustbee-gui/Cargo.toml
+balt rustbee-common/src/logger.rs
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -60,12 +60,12 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 50 - ((26 * winheight(0) + 27) / 55)
+let s:l = 60 - ((35 * winheight(0) + 27) / 55)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 50
-normal! 029|
+keepjumps 60
+normal! 020|
 lcd ~/work/rustbee
 tabnext 1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0 && getbufvar(s:wipebuf, '&buftype') isnot# 'terminal'

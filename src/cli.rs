@@ -6,6 +6,7 @@ use color_space::{FromRgb, Rgb, Xyz};
 use rustbee_common::bluetooth::{Client, HueDevice};
 use rustbee_common::colors::Xy;
 use rustbee_common::constants::{masks::*, MaskT, ADDR_LEN};
+use rustbee_common::logger::*;
 
 #[derive(Debug, Parser)]
 pub struct Args {
@@ -17,7 +18,7 @@ pub struct Args {
         num_args = 1..,
         value_delimiter = ' ',
         global = true,
-        help = "Use device(s) MAC address(es) with this format: xx:xx:xx:xx:xx:xx. It's case-insensitive and space separated if more than one"
+        help = "If specified, uses device(s) MAC address(es) with this format: xx:xx:xx:xx:xx:xx. It's case-insensitive and space separated if more than one"
     )]
     pub hex_mac_addresses: Option<Vec<String>>,
     #[arg(
@@ -25,7 +26,7 @@ pub struct Args {
         long = "one-shot",
         num_args = 0,
         global = true,
-        help = "If specified, it will shutdown the daemon after the command"
+        help = "If specified, it shutdowns the daemon after the command"
     )]
     pub one_shot: bool,
     #[arg(
@@ -34,7 +35,7 @@ pub struct Args {
         default_value = "false",
         default_missing_value = "true",
         global = true,
-        help = "If specified, it will save the MAC address(es) so you can use the CLI again without specifying them"
+        help = "If specified, it saves the MAC address(es) so you can use the CLI again without specifying them"
     )]
     pub save: bool,
 }
@@ -72,12 +73,23 @@ pub enum Command {
         #[arg(
             short = 'f',
             long,
-            help = "If specified, force the shutdown by killing the process instead of gracefully shutting it down"
+            help = "If specified, forces the shutdown by killing the process instead of gracefully shutting it down"
         )]
         force: bool,
     },
     Gui,
-    Logs,
+    Logs {
+        #[arg(
+            short = 'f',
+            long,
+            help = "If specified, keeps the log file open and continuously prints the latest content"
+        )]
+        follow: bool,
+        #[arg(short = 't', long, help = "If specified, shows the last x lines")]
+        tail: Option<usize>,
+        #[arg(short = 'd', long, help = "If specified, purges the log file")]
+        purge: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
@@ -96,7 +108,7 @@ impl From<&Command> for MaskT {
             Command::Brightness { .. } => BRIGHTNESS,
             Command::Disconnect => DISCONNECT,
             command @ Command::Gui
-            | command @ Command::Logs
+            | command @ Command::Logs { .. }
             | command @ Command::Shutdown { .. } => {
                 unreachable!("This command {command:?} shouldn't communicate with the daemon")
             }
@@ -106,7 +118,7 @@ impl From<&Command> for MaskT {
 
 impl Command {
     pub async fn handle(&self, hue_device: HueDevice<Client>) -> btleplug::Result<()> {
-        if matches!(self, Self::Gui | Self::Logs | Self::Shutdown { .. }) {
+        if matches!(self, Self::Gui | Self::Logs { .. } | Self::Shutdown { .. }) {
             // Should never occur since it's handled before
             return Ok(());
         }
@@ -117,7 +129,7 @@ impl Command {
         // }
 
         match self {
-            Self::Gui | Self::Logs | Self::Shutdown { .. } => (),
+            Self::Gui | Self::Logs { .. } | Self::Shutdown { .. } => unreachable!(),
             Self::Power { state } => match state {
                 Some(state) => {
                     if !hue_device
@@ -125,8 +137,8 @@ impl Command {
                         .await
                         .is_success()
                     {
-                        eprintln!(
-                            "[ERROR] Failed to write power state to hue device address: {}",
+                        error!(
+                            "Failed to write power state to hue device address: {}",
                             hue_device.addr
                         );
                     }
@@ -136,15 +148,15 @@ impl Command {
                     let success = res.is_success();
 
                     if !success {
-                        eprintln!(
-                            "[ERROR] Failed to read power state to hue device address: {}",
+                        error!(
+                            "Failed to read power state to hue device address: {}",
                             hue_device.addr
                         );
                     } else {
                         let (code, buf) = hue_device.get_name().await;
                         let name = if !code.is_success() {
-                            eprintln!(
-                                "[ERROR] Failed to read device name from hue device address: {}",
+                            error!(
+                                "Failed to read device name from hue device address: {}",
                                 hue_device.addr
                             );
                             String::new()
@@ -152,7 +164,7 @@ impl Command {
                             String::from_utf8(buf.to_vec()).unwrap()
                         };
 
-                        println!(
+                        info!(
                             "Device{} {} is {}",
                             if name.is_empty() {
                                 name
@@ -173,8 +185,8 @@ impl Command {
                     );
 
                     if !hue_device.set_brightness(*value).await.is_success() {
-                        eprintln!(
-                            "[ERROR] Failed to write brightness state to hue device address: {}",
+                        error!(
+                            "Failed to write brightness state to hue device address: {}",
                             hue_device.addr
                         );
                     }
@@ -184,15 +196,15 @@ impl Command {
                     let success = res.is_success();
 
                     if !success {
-                        eprintln!(
-                            "[ERROR] Failed to get brightness level from hue device address: {}",
+                        error!(
+                            "Failed to get brightness level from hue device address: {}",
                             hue_device.addr
                         );
                     } else {
                         let (code, buf) = hue_device.get_name().await;
                         let name = if !code.is_success() {
-                            eprintln!(
-                                "[ERROR] Failed to read device name from hue device address: {}",
+                            error!(
+                                "Failed to read device name from hue device address: {}",
                                 hue_device.addr
                             );
                             String::new()
@@ -200,7 +212,7 @@ impl Command {
                             String::from_utf8(buf.to_vec()).unwrap()
                         };
 
-                        println!(
+                        info!(
                             "Device{} {} brightness level is {}%",
                             if name.is_empty() {
                                 name
@@ -285,8 +297,8 @@ impl Command {
                     let success = res.is_success();
 
                     if !success {
-                        eprintln!(
-                            "[ERROR] Failed to get color data from hue device address: {}",
+                        error!(
+                            "Failed to get color data from hue device address: {}",
                             hue_device.addr
                         );
                     } else {
@@ -302,9 +314,7 @@ impl Command {
                                 let success = res.is_success();
 
                                 if !success {
-                                    eprintln!(
-                                        "[ERROR] Failed to get brightness to calculate XYZ color"
-                                    );
+                                    error!("Failed to get brightness to calculate XYZ color");
                                     return Ok(());
                                 }
 
@@ -312,7 +322,7 @@ impl Command {
                                 assert!(rgb.r * 100. <= 255.);
                                 assert!(rgb.g * 100. <= 255.);
                                 assert!(rgb.b * 100. <= 255.);
-                                println!(
+                                info!(
                                     "Device color is ({:.0}, {:.0}, {:.0}) ({:?})",
                                     rgb.r * 100.,
                                     rgb.g * 100.,
@@ -325,10 +335,10 @@ impl Command {
                                 let hex = [rgb.b as u8, rgb.g as u8, rgb.r as u8]
                                     .into_iter()
                                     .fold(String::new(), |_, v| format!("{v:06x}"));
-                                println!("Device color is #{hex}");
+                                info!("Device color is #{hex}");
                             }
                             Self::ColorXy { .. } => {
-                                println!("Device color is x: {:.3}, y: {:.3}", xyz.x, xyz.y);
+                                info!("Device color is x: {:.3}, y: {:.3}", xyz.x, xyz.y);
                             }
                             _ => unreachable!(),
                         }
@@ -342,8 +352,8 @@ impl Command {
                         .await
                         .is_success()
                     {
-                        eprintln!(
-                            "Error: daemon failed to disconnect from device {}",
+                        error!(
+                            "Daemon failed to disconnect from device {}",
                             hue_device.addr
                         );
                     }
@@ -351,8 +361,8 @@ impl Command {
             }
             Self::Disconnect => {
                 if !hue_device.disconnect_device().await.is_success() {
-                    eprintln!(
-                        "Error: daemon failed to disconnect from device {}",
+                    error!(
+                        "Daemon failed to disconnect from device {}",
                         hue_device.addr
                     );
                 }
