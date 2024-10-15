@@ -92,7 +92,7 @@ impl Logger {
             return;
         }
 
-        println!("{content}");
+        print!("{content}");
     }
 
     pub fn purge(&self) {
