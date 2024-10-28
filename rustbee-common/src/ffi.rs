@@ -83,6 +83,7 @@ extern "C" fn free_device(device_ptr: *mut Device) {
 
 // For some reason, if this fn is called "connect" it seg faults
 // the program without even calling it, must be conflicting somewhere
+// REASON: https://github.com/rust-lang/rust/issues/28179 fixed in Rust 1.82
 #[no_mangle]
 extern "C" fn try_connect(device_ptr: *mut Device) -> bool {
     if device_ptr.is_null() {

@@ -76,13 +76,14 @@ If you can't, try again but factory reset your light before.
 ```bash
 # To get the CLI commands available
 rustbee help
+rustbee [command] help
 # Or you can launch the GUI
 rustbee gui
 
-# You can get the logs file path and use it as you wish (e.g. `just logs | xargs cat` or `tail $(just logs)`)
-just logs
-# But it will soon be an added command to the CLI with options like --limit and --follow
-# rustbee logs
+# e.g. this command will use these 2 MAC addresses to find the devices,
+# turn them ON, save them to local storage file (so you don't have to specify
+# them on next commands) and shutdown the daemon after the command
+rustbee power on -s1a e8:d4:ea:c4:62:00 ec:27:a7:d6:5a:9c
 ```
 
 *On error: if you get "le-connection-abort-by-local" error, it's kind of usual, BLE is a bit weak so try again your last command, it will most likely work after an other try*
