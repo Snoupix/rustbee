@@ -234,10 +234,13 @@ impl App {
         cc.egui_ctx.set_fonts(fonts);
 
         cc.egui_ctx.style_mut(|style| {
-            style.debug.debug_on_hover = true;
-            style.debug.show_expand_width = true;
-            style.debug.show_expand_height = true;
-            style.debug.show_resize = true;
+            #[cfg(debug_assertions)]
+            {
+                style.debug.debug_on_hover = true;
+                style.debug.show_expand_width = true;
+                style.debug.show_expand_height = true;
+                style.debug.show_resize = true;
+            }
 
             style.spacing.button_padding = vec2(10., 5.);
             style.override_font_id = Some(FontId {
