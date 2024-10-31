@@ -8,15 +8,12 @@ use std::time::Duration;
 use btleplug::api::{BDAddr, Central, CentralEvent, Manager as _, Peripheral as _, WriteType};
 use btleplug::platform::{Manager, Peripheral};
 use futures::{future, stream, StreamExt};
-use interprocess::{
-    local_socket::{tokio::Stream as TokioStream, traits::tokio::Stream as _, ToFsName as _},
-    os::unix::local_socket::FilesystemUdSocket,
+use interprocess::local_socket::{
+    tokio::Stream as TokioStream, traits::tokio::Stream as _, GenericFilePath, ToFsName as _,
 };
+use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::sync::Mutex;
-use tokio::{
-    io::{AsyncReadExt as _, AsyncWriteExt as _},
-    time::{self, sleep},
-};
+use tokio::time::{self, sleep};
 use uuid::Uuid;
 
 #[cfg(feature = "ffi")]
@@ -441,7 +438,7 @@ where
 
     async fn get_file_socket() -> TokioStream {
         let fs_name = SOCKET_PATH
-            .to_fs_name::<FilesystemUdSocket>()
+            .to_fs_name::<GenericFilePath>()
             .unwrap_or_else(|error| {
                 eprintln!("Error cannot create filesystem path name: {error}");
                 std::process::exit(2);
@@ -517,7 +514,7 @@ where
 {
     pub fn get_file_socket() -> interprocess::local_socket::Stream {
         let fs_name = SOCKET_PATH
-            .to_fs_name::<FilesystemUdSocket>()
+            .to_fs_name::<GenericFilePath>()
             .unwrap_or_else(|error| {
                 eprintln!("Error cannot create filesystem path name: {error}");
                 std::process::exit(2);
