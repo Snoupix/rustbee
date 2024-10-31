@@ -97,7 +97,7 @@ rustbee power on -s1a e8:d4:ea:c4:62:00 ec:27:a7:d6:5a:9c
 
 ### TODO
 
-- [ ] Impl interop for the daemon socket (path...)
+- [x] Impl interop for the daemon socket (path...)
 - [x] Migrate from bluez to bleplug for interop (lost pair and trust features on the process)
 - [x] Clarify CLI args (add descriptions)
 - [ ] When finished with GUI impl, try to impl WASM build target

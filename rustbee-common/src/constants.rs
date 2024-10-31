@@ -16,7 +16,14 @@ pub const MISC_SERVICES_UUID: Uuid = uuid!("0000180a-0000-1000-8000-00805f9b34fb
 pub const MODEL_UUID: Uuid = uuid!("00002a24-0000-1000-8000-00805f9b34fb");
 pub const MANUFACTURER_UUID: Uuid = uuid!("00002a29-0000-1000-8000-00805f9b34fb");
 
+#[cfg(target_os = "windows")]
+pub const SOCKET_PATH: &str = r#"\\.\pipe\rustbee-daemon.sock"#;
+#[cfg(target_os = "windows")]
+pub const LOG_PATH: &str = "./rustbee.log"; // TODO: Use APPDATA
+
+#[cfg(not(target_os = "windows"))]
 pub const SOCKET_PATH: &str = "/var/run/rustbee-daemon.sock";
+#[cfg(not(target_os = "windows"))]
 pub const LOG_PATH: &str = "/var/log/rustbee.log";
 
 // Levels ERROR < WARN < INFO < DEBUG < TRACE

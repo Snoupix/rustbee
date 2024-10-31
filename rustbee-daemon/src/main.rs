@@ -5,9 +5,9 @@ use std::{collections::HashMap, io::Error};
 
 use futures::stream::StreamExt as _;
 use interprocess::local_socket::{
-    tokio::Stream, traits::tokio::Listener as _, ListenerNonblockingMode, ListenerOptions, ToFsName,
+    tokio::Stream, traits::tokio::Listener as _, GenericFilePath, ListenerNonblockingMode,
+    ListenerOptions, ToFsName as _,
 };
-use interprocess::os::unix::local_socket::FilesystemUdSocket;
 use tokio::fs;
 use tokio::sync::Mutex;
 use tokio::{
@@ -60,7 +60,7 @@ async fn main() {
     }
 
     let fs_name = SOCKET_PATH
-        .to_fs_name::<FilesystemUdSocket>()
+        .to_fs_name::<GenericFilePath>()
         .unwrap_or_else(|error| {
             error!("Error cannot create filesystem path name: {SOCKET_PATH} => {error}");
             std::process::exit(1);
