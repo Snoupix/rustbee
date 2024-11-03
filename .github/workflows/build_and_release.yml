@@ -4,11 +4,8 @@ on:
   push:
     branches:
       - main
-      - "*ci"
-      - "*cd"
-    paths-ignore:
-      - "**.md"
-      - "**Justfile"
+    tags:
+      - "v*"
   pull_request:
     branches:
       - main
@@ -159,3 +156,5 @@ jobs:
             ../rustbee-daemon/target/${{ matrix.platform.target }}/release/${{ matrix.platform.daemon_bin }}
             ../README.md
             ../Justfile
+
+
