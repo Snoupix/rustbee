@@ -112,6 +112,7 @@ rustbee power on -s1a e8:d4:ea:c4:62:00 ec:27:a7:d6:5a:9c
 - [x] Impl a better logging for the daemon and it should log to file itself
 - [x] CLI should have a logs command to output the log file to stdout
 - [x] Impl CI to create and publish binaries on v* tag creation
+- [ ] Impl CHANGES.md and INSTRUCTIONS.txt files for the release on v1.0.0 and push a tag when v1 is out so the release action is triggered automatically (also, change the changes-file field on the CI).
 - [ ] Impl unit and integration tests
 
 ----
