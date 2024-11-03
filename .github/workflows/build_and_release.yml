@@ -1,0 +1,161 @@
+name: Build and Release for Windows, Linux and MacOS
+
+on:
+  push:
+    branches:
+      - main
+      - "*ci"
+      - "*cd"
+    paths-ignore:
+      - "**.md"
+      - "**Justfile"
+  pull_request:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  release_cli:
+    strategy:
+      matrix:
+        platform:
+          - target: x86_64-unknown-linux-gnu
+            cli_bin: rustbee
+            gui_bin: rustbee-gui
+            daemon_bin: rustbee-daemon
+            os_name: Linux_x86_64
+            os: ubuntu-latest
+          - target: x86_64-pc-windows-gnu
+            cli_bin: rustbee.exe
+            # houseabsolute/actions-rust-release@v0 perl script automatically adds .exe
+            cli_bin_no_ext: rustbee
+            gui_bin: rustbee-gui.exe
+            gui_bin_no_ext: rustbee-gui
+            daemon_bin: rustbee-daemon.exe
+            os_name: Windows_x86_64
+            os: windows-latest
+          # TODO: Respect Mac users, maybe ?
+          # - target: x86_64-apple-darwin
+          #   bin: rustbee
+          #   os_name: MacOS_x86_64
+          #   os: macOS-latest
+
+    runs-on: ${{ matrix.platform.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.platform.target }}
+          override: true
+
+      - name: Cache cargo & target directories
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies
+        if: ${{ matrix.platform.os == 'ubuntu-latest' }}
+        run: |
+          sudo apt install libdbus-1-dev pkg-config
+
+      - name: Build CLI
+        uses: houseabsolute/actions-rust-cross@v0
+        with:
+          working-directory: .
+          command: build
+          target: ${{ matrix.platform.target }}
+          args: "--release"
+
+      - name: Build Daemon
+        uses: houseabsolute/actions-rust-cross@v0
+        with:
+          working-directory: ./rustbee-daemon
+          command: build
+          target: ${{ matrix.platform.target }}
+          args: "--release"
+
+      # Note that it releases when is a tag and prefix is "v" or custom with "release-tag-prefix"
+      # https://github.com/houseabsolute/actions-rust-release/blob/v0/action.yml#L122
+      # TODO: Change author to houseabsolute if/when PR https://github.com/houseabsolute/actions-rust-release/pull/2
+      # is merged. Don't forget below one too
+      - name: Publish artifacts and release
+        uses: snoupix/actions-rust-release@v0
+        with:
+          working-directory: .
+          executable-name: ${{ matrix.platform.cli_bin_no_ext || matrix.platform.cli_bin }}
+          changes-file: README.md # TODO: Fix
+          target: ${{ matrix.platform.target }}
+          extra-files: |
+            rustbee-daemon/target/${{ matrix.platform.target }}/release/${{ matrix.platform.daemon_bin }}
+            README.md
+            Justfile
+
+  release_gui:
+    # Copy of the above strategy
+    strategy:
+      matrix:
+        platform:
+          - target: x86_64-unknown-linux-gnu
+            cli_bin: rustbee
+            gui_bin: rustbee-gui
+            daemon_bin: rustbee-daemon
+            os_name: Linux_x86_64
+            os: ubuntu-latest
+          - target: x86_64-pc-windows-gnu
+            cli_bin: rustbee.exe
+            cli_bin_no_ext: rustbee
+            gui_bin: rustbee-gui.exe
+            gui_bin_no_ext: rustbee-gui
+            daemon_bin: rustbee-daemon.exe
+            os_name: Windows_x86_64
+            os: windows-latest
+
+    runs-on: ${{ matrix.platform.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.platform.target }}
+          override: true
+
+      - name: Cache cargo & target directories
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies
+        if: ${{ matrix.platform.os == 'ubuntu-latest' }}
+        run: |
+          sudo apt install libdbus-1-dev pkg-config
+
+      - name: Build GUI
+        uses: houseabsolute/actions-rust-cross@v0
+        with:
+          working-directory: ./rustbee-gui
+          command: build
+          target: ${{ matrix.platform.target }}
+          args: "--release"
+
+      - name: Build Daemon
+        uses: houseabsolute/actions-rust-cross@v0
+        with:
+          working-directory: ./rustbee-daemon
+          command: build
+          target: ${{ matrix.platform.target }}
+          args: "--release"
+
+      - name: Publish artifacts and release
+        uses: snoupix/actions-rust-release@v0
+        with:
+          working-directory: ./rustbee-gui
+          executable-name: ${{ matrix.platform.gui_bin_no_ext || matrix.platform.gui_bin }}
+          changes-file: ../README.md # TODO: Fix
+          target: ${{ matrix.platform.target }}
+          extra-files: |
+            ../rustbee-daemon/target/${{ matrix.platform.target }}/release/${{ matrix.platform.daemon_bin }}
+            ../README.md
+            ../Justfile

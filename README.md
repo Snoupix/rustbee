@@ -111,7 +111,7 @@ rustbee power on -s1a e8:d4:ea:c4:62:00 ec:27:a7:d6:5a:9c
 - - [x] setcap of rustbee daemon exec to be able to create log file
 - [x] Impl a better logging for the daemon and it should log to file itself
 - [x] CLI should have a logs command to output the log file to stdout
-- [ ] Impl CI to create and publish binaries
+- [x] Impl CI to create and publish binaries on v* tag creation
 - [ ] Impl unit and integration tests
 
 ----
