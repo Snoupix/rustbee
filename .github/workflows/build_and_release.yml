@@ -1,4 +1,5 @@
-name: Build and Release for Windows, Linux and MacOS
+name: Build and Release for Windows and Linux
+# TODO: Add MacOS
 
 on:
   push:
@@ -156,5 +157,3 @@ jobs:
             ../rustbee-daemon/target/${{ matrix.platform.target }}/release/${{ matrix.platform.daemon_bin }}
             ../README.md
             ../Justfile
-
-

@@ -1,0 +1,3 @@
+TODO
+
+You may want to add them to your `$PATH` environment variable so you can use them anywhere.
