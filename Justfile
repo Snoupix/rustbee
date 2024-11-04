@@ -16,6 +16,7 @@ export white := "\\e[0m"
 
 alias ba := build-all
 alias ia := install-all
+alias help := _default
 
 # Not actually called but when calling "just" it takes the first recipe
 [doc]

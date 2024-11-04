@@ -4,38 +4,78 @@ Initially, this project was named to use the Zigbee protocol for my Philips Hue 
 
 ## Goal
 
-This project aims to control my Philips Hue lights without having to buy the *expensive* Philips Hue bridge and use a JSON based HTTP REST API instead of BLE.
+This project aims to control Philips Hue lights without having to buy the *expensive* Philips Hue bridge and use a JSON based HTTP REST API instead of BLE.
+
+*Yes, BLE is not as optimized as a Zigbee network but for the moment, this project is BLE based.*
 
 It will also later be used as a base for an [ESP32](https://www.espressif.com/en/products/socs/esp32) implementation to automate the control of my lights.
 
-## Disclaimer
+## State
 
-*While this section exists, it means that this project is in Work In Progress. I will do my best to push working states on the main branch but there will probably still have some kind of issues.*
+This project is not stable *yet* thus, some features may not work (at all).
 
-## Compatibility/Requirements
+## How to install
 
-This project is built on [Arch linux](https://archlinux.org) *btw* thus it will not work on Windows neither WSL because the Bluetooth adapter is not (or hardly) available from WSL.
+You have two options to install and use Rustbee:
+- Use the compiled release and follow [those steps](#install-rustbee).
+- Build the project yourself from source by following [those steps](#build-from-source).
 
-It might work on your Linux distro and maybe OSX if you have these required commands/programs (the others are "GNU/BSD defaults"):
+## How to use
 
-- pgrep
-- pkill
-- bluetooth
-- bluez
-- bluezlibs
-- bluezutils
+To connect a Philips Hue light, you may need the official mobile app [Apple Store](https://apps.apple.com/us/app/philips-hue-gen-2/id1055281310?ls=1) - [Google Play Store](https://play.google.com/store/apps/details?id=com.philips.lighting.hue2). On the app, you need to go to `Settings > Voice Assistants > Amazon Alexa and tap Make visible` [thanks to alexhorn/libhueble](https://github.com/alexhorn/libhueble/issues/1).
 
-Optional if docker is installed and you wanna compile locally:
-- rustc >= 1.80
-- rustup cargo component (`rustup component add cargo`)
+This will enable the device to be discoverable and then after that, you will have to **pair** and **trust** your device via Bluetooth.
+
+If you can't, try again but factory reset your light before.
+
+```bash
+# To get the CLI commands available
+rustbee help
+rustbee [command] help
+# Or you can launch the GUI
+rustbee gui
+
+# e.g. this command will use these 2 MAC addresses to find the devices,
+# turn them ON, save them to local storage file (so you don't have to specify
+# them on next commands) and shutdown the daemon after the command
+rustbee power on -s1a e8:d4:ea:c4:62:00 ec:27:a7:d6:5a:9c
+```
+
+*Known error: if you have an error with: "le-connection-abort-by-local", it's kind of usual, BLE is a bit weak so try again your last command, it will most likely work after an other try*
+
+If you have any other issue, don't hesitate to [create an issue](https://github.com/Snoupix/rustbee/issues/new). An issue template doesn't exists yet so please, be as clear as you can.
+
+## Install Rustbee
+
+You can check on the [latest release](https://github.com/Snoupix/rustbee/releases/latest) page and get either the CLI or GUI or both.
+If there are no pre-built binaries for your OS/arch, it means that it is not *currently* supported and **may** never be.
+
+The compressed folder contains instructions on how to properly install Rustbee and the 2 executables: The CLI/GUI and the daemon.
 
 ## Build from source
 
-This project uses [just](https://github.com/casey/just) as a command runner, which is a `make` alternative. It's recommanded to have it installed to build the project from source.
+<details>
+<summary>Expand to see more</summary>
 
-Note that you will need to enter your password, the daemon needs `sudo` to have permissions to create an IPC file socket at `/var/run` (which is root owned/protected), the log file at `/var/log` and if you're building with docker, it will compile root owned binaries so it will need your password at the end to change owner of these files.
+### Compatibility/Requirements
 
-Also, the daemon is compiled whether you chose the CLI or GUI.
+This project is built on [Arch linux](https://archlinux.org) *btw* and I'm making my best to make it Windows compatible but it might not or partially work on anything other than Linux.
+
+I'm using [just](https://github.com/casey/just) as a command runner, which is a `make` alternative. It's highly recommanded to have it installed to build the project from source.
+
+Note that you will need to enter your password, the just recipe needs `sudo` to have permissions to give capabilities to the daemon so it can create an IPC file socket at `/var/run` (which is root owned/protected), the log file at `/var/log` and if you're building with docker, it will compile root owned binaries so it will need your password at the end to change owner of these files too.
+
+*Also, the daemon is compiled whether you chose the CLI or GUI.*
+
+Rust requirements:
+- rustc >= 1.80
+- rustup cargo component (`rustup component add cargo`)
+
+Or, you can use [Docker](https://www.docker.com/) to build the project if you don't have Rust installed locally.
+
+### Build steps
+
+Use `just` or `just help` to retrieve available commands or follow those steps:
 
 ```bash
 # First, you need to build the binaries
@@ -60,60 +100,18 @@ just install-gui
 # with the --force flag
 just shutdown
 
-# If you want to uninstall
+# If you want to uninstall (remove the symlink to /bin and erase binaries and their build deps)
 just uninstall
 # And you can also add "--preserve-logs" to avoid removing logs file
 ```
-
-## How to use
-
-To connect a Philips Hue light, you may need the official mobile app [Apple Store](https://apps.apple.com/us/app/philips-hue-gen-2/id1055281310?ls=1) - [Google Play Store](https://play.google.com/store/apps/details?id=com.philips.lighting.hue2). On the app, you need to go to `Settings > Voice Assistants > Amazon Alexa and tap Make visible` [thanks to alexhorn/libhueble](https://github.com/alexhorn/libhueble/issues/1).
-
-This will enable the device to be discoverable and then after that, you will have to **pair** and **trust** your device via Bluetooth.
-
-If you can't, try again but factory reset your light before.
-
-```bash
-# To get the CLI commands available
-rustbee help
-rustbee [command] help
-# Or you can launch the GUI
-rustbee gui
-
-# e.g. this command will use these 2 MAC addresses to find the devices,
-# turn them ON, save them to local storage file (so you don't have to specify
-# them on next commands) and shutdown the daemon after the command
-rustbee power on -s1a e8:d4:ea:c4:62:00 ec:27:a7:d6:5a:9c
-```
-
-*On error: if you get "le-connection-abort-by-local" error, it's kind of usual, BLE is a bit weak so try again your last command, it will most likely work after an other try*
+</details>
 
 ### Modules/Binaries
 
 1. **rustbee** (bin): The base module is used as the CLI (Command Line Interface) for light control features: power state (set/get), bightness (set/get), color (set/get), shutdown (and disconnect), gui (to launch the GUI)
 1. **rustbee-gui** (bin): The GUI (Graphical User Interface) that can replace the CLI for a better UX and will also be a WASM module to use the browser instead of native GUI
 1. **rustbee-daemon** (bin): The local filesystem socket running as a background daemon for interprocess communication (IPC) to keep connection with the lights and avoid connect/disconnect on every command (BLE communication is kind of tricky and fails sometimes) and disconnects them on a timeout
-1. **rustbee-common** (lib): Actual implementations of bluetooth devices and common stuff used by the other binaries
-
-### TODO
-
-- [x] Impl interop for the daemon socket (path...)
-- [x] Migrate from bluez to bleplug for interop (lost pair and trust features on the process)
-- [x] Clarify CLI args (add descriptions)
-- [ ] When finished with GUI impl, try to impl WASM build target
-- [x] Impl CLI data lights save and maybe share it with GUI
-- - [x] Impl shared Storage using ~eframe::Storage trait~ (didn't because it links String to String and I would parse data all around)
-- [ ] [CLI] Find a way to select a device with a better UX ?
-- [x] Impl `justfile` recipes to replace bash script for a better DX and update README for steps
-- - [x] `rustbee gui` should launch the gui executable
-- - [x] The deamon launch feature should be migrated to common so cli and gui can launch it without bash
-- - [x] setcap of rustbee cli exec to be able to create file socket
-- - [x] setcap of rustbee daemon exec to be able to create log file
-- [x] Impl a better logging for the daemon and it should log to file itself
-- [x] CLI should have a logs command to output the log file to stdout
-- [x] Impl CI to create and publish binaries on v* tag creation
-- [ ] Impl CHANGES.md and INSTRUCTIONS.txt files for the release on v1.0.0 and push a tag when v1 is out so the release action is triggered automatically (also, change the changes-file field on the CI).
-- [ ] Impl unit and integration tests
+1. **rustbee-common** (lib): Actual implementations of bluetooth devices and common stuff used by the other binaries. It can also be compiled to a C dynamic lib (C header included) to use Rustbee features with any other C compatible languages !
 
 ----
 
