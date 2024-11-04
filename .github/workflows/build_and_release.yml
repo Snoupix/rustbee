@@ -66,7 +66,7 @@ jobs:
           working-directory: .
           command: build
           target: ${{ matrix.platform.target }}
-          args: "--release"
+          args: --locked "--release"
 
       - name: Build Daemon
         uses: houseabsolute/actions-rust-cross@v0
@@ -74,7 +74,7 @@ jobs:
           working-directory: ./rustbee-daemon
           command: build
           target: ${{ matrix.platform.target }}
-          args: "--release"
+          args: "--locked --release"
 
       # Note that it releases when is a tag and prefix is "v" or custom with "release-tag-prefix"
       # https://github.com/houseabsolute/actions-rust-release/blob/v0/action.yml#L122
@@ -136,7 +136,7 @@ jobs:
           working-directory: ./rustbee-gui
           command: build
           target: ${{ matrix.platform.target }}
-          args: "--release"
+          args: "--locked --release"
 
       - name: Build Daemon
         uses: houseabsolute/actions-rust-cross@v0
@@ -144,7 +144,7 @@ jobs:
           working-directory: ./rustbee-daemon
           command: build
           target: ${{ matrix.platform.target }}
-          args: "--release"
+          args: "--locked --release"
 
       - name: Publish artifacts and release
         uses: snoupix/actions-rust-release@v0
