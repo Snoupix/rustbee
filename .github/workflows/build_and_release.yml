@@ -66,7 +66,7 @@ jobs:
           working-directory: .
           command: build
           target: ${{ matrix.platform.target }}
-          args: --locked "--release"
+          args: "--locked --release"
 
       - name: Build Daemon
         uses: houseabsolute/actions-rust-cross@v0

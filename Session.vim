@@ -13,7 +13,7 @@ if &shortmess =~ 'A'
 else
   set shortmess=aoO
 endif
-badd +115 README.md
+badd +19 README.md
 badd +100 rustbee
 badd +1 .gitignore
 badd +261 rustbee-gui/src/main.rs
@@ -28,7 +28,7 @@ badd +11 rustbee-gui/Cargo.toml
 badd +127 src/cli.rs
 badd +23 rustbee-common/Cargo.toml
 badd +18 rustbee-common/src/tests.rs
-badd +33 Justfile
+badd +26 Justfile
 badd +8 rustbee-gui/Justfile
 badd +8 rustbee-daemon/Justfile
 badd +29 rustbee-common/src/daemon.rs
@@ -38,10 +38,12 @@ badd +56 rustbee-common/src/ffi.rs
 badd +73 rustbee-common/src/storage.rs
 badd +9 src/address.rs
 badd +90 rustbee-common/src/logger.rs
-badd +7 .github/workflows/build_and_release.yml
+badd +69 .github/workflows/build_and_release.yml
+badd +34 CHANGELOG.md
+badd +1 TODO.md
 argglobal
 %argdel
-edit README.md
+edit .github/workflows/build_and_release.yml
 wincmd t
 let s:save_winminheight = &winminheight
 let s:save_winminwidth = &winminwidth
@@ -50,7 +52,7 @@ set winheight=1
 set winminwidth=0
 set winwidth=1
 argglobal
-balt .github/workflows/build_and_release.yml
+balt README.md
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -61,12 +63,12 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 115 - ((49 * winheight(0) + 27) / 55)
+let s:l = 69 - ((27 * winheight(0) + 27) / 55)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 115
-normal! 064|
+keepjumps 69
+normal! 026|
 lcd ~/work/rustbee
 tabnext 1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0 && getbufvar(s:wipebuf, '&buftype') isnot# 'terminal'
@@ -82,6 +84,7 @@ if filereadable(s:sx)
   exe "source " . fnameescape(s:sx)
 endif
 let &g:so = s:so_save | let &g:siso = s:siso_save
+nohlsearch
 doautoall SessionLoadPost
 unlet SessionLoad
 " vim: set ft=vim :
