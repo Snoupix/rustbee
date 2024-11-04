@@ -85,7 +85,7 @@ jobs:
         with:
           working-directory: .
           executable-name: ${{ matrix.platform.cli_bin_no_ext || matrix.platform.cli_bin }}
-          changes-file: README.md # TODO: Fix
+          changes-file: CHANGELOG.md
           target: ${{ matrix.platform.target }}
           extra-files: |
             rustbee-daemon/target/${{ matrix.platform.target }}/release/${{ matrix.platform.daemon_bin }}
@@ -151,7 +151,7 @@ jobs:
         with:
           working-directory: ./rustbee-gui
           executable-name: ${{ matrix.platform.gui_bin_no_ext || matrix.platform.gui_bin }}
-          changes-file: ../README.md # TODO: Fix
+          changes-file: ../CHANGELOG.md
           target: ${{ matrix.platform.target }}
           extra-files: |
             ../rustbee-daemon/target/${{ matrix.platform.target }}/release/${{ matrix.platform.daemon_bin }}
