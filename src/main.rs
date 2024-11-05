@@ -11,6 +11,7 @@ use rustbee_common::utils::{launch_daemon, shutdown_daemon};
 
 use address::*;
 use cli::Command;
+use rustbee_common::BluetoothAddr;
 
 static LOGGER: Logger = Logger::new("Rustbee-CLI", true);
 
@@ -82,9 +83,12 @@ async fn main() -> btleplug::Result<()> {
         std::process::exit(1);
     }
 
-    // Returns Result<Vec<HueDevice<Client>>> infered because the Command::handle fn requires a
+    // Returns Vec<HueDevice<Client>> infered because the Command::handle fn requires a
     // Client variant so the turbofish would be useless
-    let hue_devices = get_devices(&addresses).await?;
+    let hue_devices = addresses
+        .iter()
+        .map(|addr| HueDevice::new(BluetoothAddr::from(*addr)))
+        .collect::<Vec<_>>();
 
     for hue_device in hue_devices {
         tasks.push(tokio::spawn(command.handle(hue_device)));
