@@ -191,6 +191,11 @@ jobs:
       - name: Cache cargo & target directories
         uses: Swatinem/rust-cache@v2
 
+      - name: Install dependencies
+        if: ${{ matrix.platform.os == 'ubuntu-latest' }}
+        run: |
+          sudo apt install libdbus-1-dev pkg-config
+
       - name: Build C dynamic library
         run: |
           cd rustbee-common

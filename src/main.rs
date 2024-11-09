@@ -53,7 +53,7 @@ async fn main() -> btleplug::Result<()> {
             }
 
             if follow {
-                LOGGER.follow().await;
+                LOGGER.follow(tail).await;
 
                 return Ok(());
             }
