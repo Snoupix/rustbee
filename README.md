@@ -17,8 +17,13 @@ This project is not stable *yet* thus, some features may not work (at all).
 ## How to install
 
 You have two options to install and use Rustbee:
-- Use the compiled release and follow [those steps](#install-rustbee).
 - Build the project yourself from source by following [those steps](#build-from-source).
+- Use the compiled release and follow those steps.
+
+You can check on the [latest release](https://github.com/Snoupix/rustbee/releases/latest) page and get either the CLI or GUI or both.
+If there are no pre-built binaries for your OS/arch, it means that it is not *currently* supported and **may** never be. *You can still try to build it from source yourself though.*
+
+The compressed folder contains instructions on how to properly install Rustbee and the 2 executables: The CLI/GUI and the daemon.
 
 ## How to use
 
@@ -44,13 +49,6 @@ rustbee power on -s1a e8:d4:ea:c4:62:00 ec:27:a7:d6:5a:9c
 *Known error: if you have an error with: "le-connection-abort-by-local", it's kind of usual, BLE is a bit weak so try again your last command, it will most likely work after an other try*
 
 If you have any other issue, don't hesitate to [create an issue](https://github.com/Snoupix/rustbee/issues/new). An issue template doesn't exists yet so please, be as clear as you can.
-
-## Install Rustbee
-
-You can check on the [latest release](https://github.com/Snoupix/rustbee/releases/latest) page and get either the CLI or GUI or both.
-If there are no pre-built binaries for your OS/arch, it means that it is not *currently* supported and **may** never be.
-
-The compressed folder contains instructions on how to properly install Rustbee and the 2 executables: The CLI/GUI and the daemon.
 
 ## Build from source
 
