@@ -30,8 +30,13 @@ impl Logger {
         log::set_max_level(log::LevelFilter::Trace);
     }
 
-    pub async fn follow(&self) {
+    /// If tail specified, prints the last x lines too before awaiting the next lines
+    pub async fn follow(&self, tail: Option<usize>) {
         println!("Waiting for log content, press CTRL+C or send SIGINT to exit");
+
+        if tail.is_some() {
+            self.print(tail);
+        }
 
         let mut file = AsyncFile::open(LOG_PATH).await.unwrap();
         let mut reader = AsyncBufReader::new(file.try_clone().await.unwrap());
