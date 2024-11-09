@@ -24,7 +24,7 @@ jobs:
             cli_bin: rustbee
             gui_bin: rustbee-gui
             daemon_bin: rustbee-daemon
-            os_name: Linux_x86_64
+            os_name: Linux-x86_64
             os: ubuntu-latest
           - target: x86_64-pc-windows-gnu
             cli_bin: rustbee.exe
@@ -33,12 +33,12 @@ jobs:
             gui_bin: rustbee-gui.exe
             gui_bin_no_ext: rustbee-gui
             daemon_bin: rustbee-daemon.exe
-            os_name: Windows_x86_64
+            os_name: Windows-x86_64
             os: windows-latest
           # TODO: Respect Mac users, maybe ?
           # - target: x86_64-apple-darwin
           #   bin: rustbee
-          #   os_name: MacOS_x86_64
+          #   os_name: MacOS-x86_64
           #   os: macOS-latest
 
     runs-on: ${{ matrix.platform.os }}
@@ -101,7 +101,7 @@ jobs:
             cli_bin: rustbee
             gui_bin: rustbee-gui
             daemon_bin: rustbee-daemon
-            os_name: Linux_x86_64
+            os_name: Linux-x86_64
             os: ubuntu-latest
           - target: x86_64-pc-windows-gnu
             cli_bin: rustbee.exe
@@ -109,7 +109,7 @@ jobs:
             gui_bin: rustbee-gui.exe
             gui_bin_no_ext: rustbee-gui
             daemon_bin: rustbee-daemon.exe
-            os_name: Windows_x86_64
+            os_name: Windows-x86_64
             os: windows-latest
 
     runs-on: ${{ matrix.platform.os }}
@@ -157,3 +157,59 @@ jobs:
             ../rustbee-daemon/target/${{ matrix.platform.target }}/release/${{ matrix.platform.daemon_bin }}
             ../README.md
             ../Justfile
+
+  release_c_lib:
+    # Copy of the above strategy
+    strategy:
+      matrix:
+        platform:
+          - target: x86_64-unknown-linux-gnu
+            cli_bin: rustbee
+            gui_bin: rustbee-gui
+            daemon_bin: rustbee-daemon
+            os_name: Linux-x86_64
+            os: ubuntu-latest
+          - target: x86_64-pc-windows-gnu
+            cli_bin: rustbee.exe
+            cli_bin_no_ext: rustbee
+            gui_bin: rustbee-gui.exe
+            gui_bin_no_ext: rustbee-gui
+            daemon_bin: rustbee-daemon.exe
+            os_name: Windows-x86_64
+            os: windows-latest
+
+    runs-on: ${{ matrix.platform.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.platform.target }}
+          override: true
+
+      - name: Cache cargo & target directories
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build C dynamic library
+        run: |
+          cd rustbee-common
+          rustup target add ${{ matrix.platform.target }}
+          cargo rustc --release --features ffi --crate-type=cdylib --target ${{ matrix.platform.target }}
+          mkdir artifacts
+          cp librustbee.h artifacts
+          cp target/${{ matrix.platform.target }}/release/librustbee_common.so artifacts/librustbee.so
+
+      - name: Publish artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: librustbee-${{ matrix.platform.os_name }}-gnu
+          path: rustbee-common/artifacts
+
+      - name: Publish GitHub release
+        if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: rustbee-common/artifacts
+          body_path: CHANGELOG.md
