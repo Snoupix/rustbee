@@ -18,7 +18,7 @@ This project is not stable *yet* thus, some features may not work (at all).
 
 You have two options to install and use Rustbee:
 - Build the project yourself from source by following [those steps](#build-from-source).
-- Use the compiled release and follow those steps.
+- Use the compiled release and follow those steps below.
 
 You can check on the [latest release](https://github.com/Snoupix/rustbee/releases/latest) page and get either the CLI or GUI or both.
 If there are no pre-built binaries for your OS/arch, it means that it is not *currently* supported and **may** never be. *You can still try to build it from source yourself though.*
@@ -44,6 +44,10 @@ rustbee gui
 # turn them ON, save them to local storage file (so you don't have to specify
 # them on next commands) and shutdown the daemon after the command
 rustbee power on -s1a e8:d4:ea:c4:62:00 ec:27:a7:d6:5a:9c
+# This command will use the saved MAC addresses to power off lights and
+# keep the daemon running so next commands will be faster since devices
+# are known and may be connected (BLE drops connection pretty fast)
+rustbee power off
 ```
 
 *Known error: if you have an error with: "le-connection-abort-by-local", it's kind of usual, BLE is a bit weak so try again your last command, it will most likely work after an other try*
@@ -104,7 +108,7 @@ just uninstall
 ```
 </details>
 
-### Modules/Binaries
+## Modules/Binaries
 
 1. **rustbee** (bin): The base module is used as the CLI (Command Line Interface) for light control features: power state (set/get), bightness (set/get), color (set/get), shutdown (and disconnect), gui (to launch the GUI)
 1. **rustbee-gui** (bin): The GUI (Graphical User Interface) that can replace the CLI for a better UX and will also be a WASM module to use the browser instead of native GUI
