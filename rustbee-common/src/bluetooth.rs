@@ -23,6 +23,7 @@ use crate::constants::{masks::*, *};
 
 pub const EMPTY_BUFFER: [u8; DATA_LEN + 1] = [0; DATA_LEN + 1];
 const ATTEMPTS: u8 = 3;
+const NO_ADAPTER_FOUND: &str = "Failed to get Bluetooth adapter. (maybe your Bluetooth is OFF ?)";
 
 #[derive(Debug)]
 pub struct Error(pub String);
@@ -495,7 +496,7 @@ where
 
         let mut buf = [0; OUTPUT_LEN];
         if let Err(error) = stream.read_exact(&mut buf).await {
-            eprintln!("Error cannot read daemon output, please check /var/log/rustbee-daemon.log file ({error}) buffer: {buf:?}");
+            eprintln!("Error cannot read daemon output, please check `rustbee logs` ({error}) buffer: {buf:?}");
             return (OutputCode::Failure, output);
         }
 
@@ -563,7 +564,7 @@ where
 
         let mut buf = [0; OUTPUT_LEN];
         if let Err(error) = stream.read_exact(&mut buf) {
-            eprintln!("Error cannot read daemon output, please check /var/log/rustbee-daemon.log file ({error}) buffer: {buf:?}");
+            eprintln!("Error cannot read daemon output, please check `rustbee logs` ({error}) buffer: {buf:?}");
             return (OutputCode::Failure, output);
         }
 
@@ -585,7 +586,14 @@ where
 {
     let manager = Manager::new().await?;
     let adapters = manager.adapters().await?;
-    let adapter = adapters.into_iter().next().unwrap();
+    let adapter = match adapters.into_iter().next() {
+        Some(adapter) => adapter,
+        None => {
+            return Err(btleplug::Error::Other(Box::new(Error(
+                NO_ADAPTER_FOUND.into(),
+            ))));
+        }
+    };
 
     let discovery = adapter.events().await?;
 
@@ -636,7 +644,14 @@ where
 {
     let manager = Manager::new().await?;
     let adapters = manager.adapters().await?;
-    let adapter = adapters.first().unwrap();
+    let adapter = match adapters.into_iter().next() {
+        Some(adapter) => adapter,
+        None => {
+            return Err(btleplug::Error::Other(Box::new(Error(
+                NO_ADAPTER_FOUND.into(),
+            ))));
+        }
+    };
 
     let mut discovery = adapter.events().await?;
     let mut device: Option<HueDevice<T>> = None;
@@ -671,7 +686,14 @@ where
 {
     let manager = Manager::new().await?;
     let adapters = manager.adapters().await?;
-    let adapter = adapters.first().unwrap();
+    let adapter = match adapters.into_iter().next() {
+        Some(adapter) => adapter,
+        None => {
+            return Err(btleplug::Error::Other(Box::new(Error(
+                NO_ADAPTER_FOUND.into(),
+            ))));
+        }
+    };
 
     let mut discovery = adapter.events().await?;
     let mut addresses: HashMap<[u8; ADDR_LEN], HueDevice<T>> = HashMap::with_capacity(addrs.len());
