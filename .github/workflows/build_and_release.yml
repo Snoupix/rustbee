@@ -164,17 +164,11 @@ jobs:
       matrix:
         platform:
           - target: x86_64-unknown-linux-gnu
-            cli_bin: rustbee
-            gui_bin: rustbee-gui
-            daemon_bin: rustbee-daemon
+            lib_ext: so
             os_name: Linux-x86_64
             os: ubuntu-latest
           - target: x86_64-pc-windows-gnu
-            cli_bin: rustbee.exe
-            cli_bin_no_ext: rustbee
-            gui_bin: rustbee-gui.exe
-            gui_bin_no_ext: rustbee-gui
-            daemon_bin: rustbee-daemon.exe
+            lib_ext: dll
             os_name: Windows-x86_64
             os: windows-latest
 
@@ -203,7 +197,7 @@ jobs:
           cargo rustc --release --features ffi --crate-type=cdylib --target ${{ matrix.platform.target }}
           mkdir artifacts
           cp librustbee.h artifacts
-          cp target/${{ matrix.platform.target }}/release/librustbee_common.so artifacts/librustbee.so
+          cp target/${{ matrix.platform.target }}/release/librustbee_common.${{ matrix.platform.lib_ext }} artifacts/librustbee.${{ matrix.platform.lib_ext }}
 
       - name: Publish artifacts
         uses: actions/upload-artifact@v4
