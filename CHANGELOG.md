@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [v0.0.2] - 2024-11-10
+
+### Changed
+
+- log command => Can now log x last lines with the follow flag
+
+### Added
+
+- C dynamic library compiled and added to release
+
 ## [v0.0.1] - 2024-11-4
 
 ### Added

@@ -73,6 +73,17 @@ build-gui-docker:
 @debug-gui:
     {{GUI}} debug
 
+# Used for new releases, version is x.x.x without the 'v'
+@push-ver version:
+    sed '0,/version = ".*"/ s//version = "{{ version }}"/' -i rustbee-common/Cargo.toml
+    git add rustbee-common/Cargo.toml
+    find . -name Cargo.lock -execdir cargo update rustbee-common \;
+    git add **/Cargo.lock
+    git commit -m "docs(lib): Tag release v{{ version }} [skip ci]"
+    git push origin main
+    git tag -a v{{ version }} -m "Release v{{ version }}"
+    git push origin --tags
+
 install:
     #!/usr/bin/env bash
     if [[ ! -f ./target/release/rustbee || ! -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
