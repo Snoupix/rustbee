@@ -164,11 +164,9 @@ jobs:
       matrix:
         platform:
           - target: x86_64-unknown-linux-gnu
-            lib_ext: so
             os_name: Linux-x86_64
             os: ubuntu-latest
           - target: x86_64-pc-windows-gnu
-            lib_ext: dll
             os_name: Windows-x86_64
             os: windows-latest
 
@@ -197,7 +195,17 @@ jobs:
           cargo rustc --release --features ffi --crate-type=cdylib --target ${{ matrix.platform.target }}
           mkdir artifacts
           cp librustbee.h artifacts
-          cp target/${{ matrix.platform.target }}/release/librustbee_common.${{ matrix.platform.lib_ext }} artifacts/librustbee.${{ matrix.platform.lib_ext }}
+          cp target/${{ matrix.platform.target }}/release/*rustbee* artifacts
+
+      - name: Remove the _common extensions for consistency
+        run: |
+          set +e
+          cd rustbee-common/artifacts
+          mv librustbee_common.d librustbee.d
+          mv librustbee_common.so librustbee.so
+          mv librustbee_common.dll librustbee.so
+          mv librustbee_common.dll.a librustbee.dll.a
+          mv rustbee_common.d librustbee.d
 
       - name: Publish artifacts
         uses: actions/upload-artifact@v4
