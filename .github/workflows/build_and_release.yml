@@ -198,6 +198,7 @@ jobs:
           cp target/${{ matrix.platform.target }}/release/*rustbee* artifacts
 
       - name: Remove the _common extensions for consistency
+        continue-on-error: true
         run: |
           set +e
           cd rustbee-common/artifacts
