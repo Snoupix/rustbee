@@ -79,7 +79,7 @@ build-gui-docker:
     git add rustbee-common/Cargo.toml
     find . -name Cargo.lock -execdir cargo update rustbee-common \;
     git add **/Cargo.lock
-    git commit -m "docs(lib): Tag release v{{ version }} [skip ci]"
+    git commit -m "docs(lib): Tag release v{{ version }}" # Cannot skip ci, it also skips the tag trigger
     git push origin main
     git tag -a v{{ version }} -m "Release v{{ version }}"
     git push origin --tags
