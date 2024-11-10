@@ -202,11 +202,11 @@ jobs:
         run: |
           set +e
           cd rustbee-common/artifacts
-          mv librustbee_common.d librustbee.d
-          mv librustbee_common.so librustbee.so
-          mv librustbee_common.dll librustbee.so
+          mv rustbee_common.dll rustbee.dll
+          mv rustbee_common.d rustbee.d
           mv librustbee_common.dll.a librustbee.dll.a
-          mv rustbee_common.d librustbee.d
+          mv librustbee_common.so librustbee.so
+          mv librustbee_common.d librustbee.d
 
       - name: Publish artifacts
         uses: actions/upload-artifact@v4
