@@ -6,8 +6,8 @@ on:
     tags:
       - "v*.*.*"
   pull_request:
-    branches-ignore:
-      - "dependabot/**"
+    branches:
+      - main
 
 env:
   CARGO_TERM_COLOR: always
@@ -15,6 +15,7 @@ env:
 
 jobs:
   release_cli:
+    if: github.event.pull_request.head.ref !~ 'dependabot/.*'
     strategy:
       matrix:
         platform:
@@ -91,6 +92,7 @@ jobs:
             Justfile
 
   release_gui:
+    if: github.event.pull_request.head.ref !~ 'dependabot/.*'
     # Copy of the above strategy
     strategy:
       matrix:
@@ -157,6 +159,7 @@ jobs:
             ../Justfile
 
   release_c_lib:
+    if: github.event.pull_request.head.ref !~ 'dependabot/.*'
     # Copy of the above strategy
     strategy:
       matrix:
