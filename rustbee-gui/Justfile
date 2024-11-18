@@ -34,6 +34,10 @@ build-docker:
     cargo watch -d 1.5 -x build -s ./target/debug/rustbee-gui
 
 [private]
+@debug-win dest_path:
+    cargo watch -d 1.5 -x "build --release --target x86_64-pc-windows-gnu" -s "cp ./target/x86_64-pc-windows-gnu/release/rustbee-gui.exe {{ dest_path }}"
+
+[private]
 install:
     #!/usr/bin/env bash
     if [[ ! -f ./target/release/rustbee-gui || ! -f ../rustbee-daemon/target/release/rustbee-daemon ]]; then
