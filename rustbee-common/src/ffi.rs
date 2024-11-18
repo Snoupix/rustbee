@@ -2,12 +2,11 @@ use std::ffi::c_uchar as uint8_t;
 use std::ptr;
 use std::sync::OnceLock;
 
-use btleplug::api::BDAddr;
 use interprocess::local_socket::Stream;
 use tokio::runtime::{Builder, Runtime};
 
-use crate::bluetooth::{CmdOutput, HueDevice, EMPTY_BUFFER, FFI};
 use crate::constants::{masks::*, ADDR_LEN, DATA_LEN, SET};
+use crate::device::{CmdOutput, HueDevice, EMPTY_BUFFER, FFI};
 use crate::utils;
 
 static THREAD: OnceLock<Runtime> = OnceLock::new();
@@ -38,7 +37,7 @@ impl Device {
     fn new(addr: [uint8_t; ADDR_LEN]) -> Self {
         Self {
             addr,
-            inner: HueDevice::new(BDAddr::from(addr)),
+            inner: HueDevice::new(addr),
         }
     }
 
