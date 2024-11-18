@@ -3,8 +3,6 @@ name: Build and Release for Windows and Linux
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*.*.*"
   pull_request:

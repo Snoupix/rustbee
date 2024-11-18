@@ -1,0 +1,42 @@
+name: Clippy Lint and Check
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  clippy:
+    strategy:
+      matrix:
+        directories:
+          - path: .
+          - path: ./rustbee-common
+          - path: ./rustbee-daemon
+          - path: ./rustbee-gui
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install Rust Toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        components: clippy
+        override: true
+
+    - name: Cache cargo & target directories
+      uses: Swatinem/rust-cache@v2
+
+    - name: Lint and Check every Rust dir with Clippy
+      working-directory: ${{ matrix.directories.path }}
+      run:
+        cargo clippy --verbose
