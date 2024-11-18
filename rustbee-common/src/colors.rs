@@ -1,6 +1,7 @@
 use std::sync::LazyLock;
 
 use color_space::Rgb;
+use log::*;
 
 // Limits for Hue Play lights
 // https://developers.meethue.com/develop/application-design-guidance/color-conversion-formulas-rgb-to-xy-and-back/#Gamut
@@ -109,7 +110,7 @@ impl Xy {
             }
         }
 
-        eprintln!("values after calc {:?} {:?}", self, (r, g, b));
+        debug!("values after calc {:?} {:?}", self, (r, g, b));
 
         /*
         assert!(
@@ -254,7 +255,7 @@ mod color_tests {
         let xy = Xy::from(red);
         let rgb = xy.to_rgb(1.);
 
-        eprintln!("{:?} {:?} {:?}", red, xy, rgb);
+        debug!("{:?} {:?} {:?}", red, xy, rgb);
 
         assert_eq!(red.r, rgb.r, "Red R isn't equal to RGB R");
         assert_eq!(red.g, rgb.g, "Red G isn't equal to RGB G");

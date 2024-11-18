@@ -15,15 +15,14 @@ use tokio::sync::{
 };
 use tokio::time::{self, Instant};
 
-use rustbee_common::bluetooth::{Client, FoundDevice, HueDevice};
 use rustbee_common::color_space::Rgb;
 use rustbee_common::colors::Xy;
 use rustbee_common::constants::{
     masks, OutputCode, ADDR_LEN, APP_ID, DATA_LEN, GUI_SAVE_INTERVAL_SECS,
 };
+use rustbee_common::device::{Client, FoundDevice, HueDevice};
 use rustbee_common::storage::{SavedDevice, Storage};
 use rustbee_common::utils::launch_daemon;
-use rustbee_common::{BluetoothAddr, BluetoothPeripheral as _};
 
 const FONT_NAME: &str = "monaspace";
 // When adding a SVG, add `fill="#FFFFFF"` to the path tag because egui expect svgs to be white by
@@ -89,7 +88,7 @@ impl Default for HueDeviceWrapper {
 }
 
 impl HueDeviceWrapper {
-    fn from_address(addr: BluetoothAddr) -> Self {
+    fn from_address(addr: [u8; ADDR_LEN]) -> Self {
         Self {
             inner: HueDevice::new(addr),
             ..Default::default()
@@ -262,7 +261,7 @@ impl App {
         let mut devices_guard = tokio_rt.block_on(devices.write());
 
         for (addr, device) in storage.get_devices() {
-            let mut hue_device = HueDeviceWrapper::from_address(BluetoothAddr::from(*addr));
+            let mut hue_device = HueDeviceWrapper::from_address(*addr);
             hue_device.name = device.name.clone();
             hue_device.current_color =
                 Debounce::new(device.current_color, Duration::from_secs(DEBOUNCE_SECS));
@@ -1043,10 +1042,11 @@ impl eframe::App for App {
                                 for device in devices_found.iter() {
                                     let devices = Arc::clone(&devices);
                                     let addr = device.address;
+                                    // TODO: Impl a better display for addr
                                     let btn = ui.button(format!(
-                                        "{} - {}",
+                                        "{} - {:?}",
                                         device.name,
-                                        BluetoothAddr::from(addr)
+                                        addr
                                     ));
 
                                     if btn.hovered() {
@@ -1063,7 +1063,7 @@ impl eframe::App for App {
 
                                             let mut devices = devices.write().await;
                                             let device = HueDeviceWrapper::from_address(
-                                                BluetoothAddr::from(addr),
+                                                addr
                                             );
 
                                             devices.insert(addr, device);

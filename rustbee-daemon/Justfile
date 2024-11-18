@@ -9,6 +9,11 @@ _default:
     echo -e "$purple[Rustbee Daemon] Finished compiling !$white"
 
 [private]
+@build-win:
+    cargo build --release --target x86_64-pc-windows-gnu
+    echo -e "$purple[Rustbee Daemon] Finished compiling !$white"
+
+[private]
 @install:
     sudo ln -sf $PWD/target/release/rustbee-daemon /bin/rustbee-daemon
     echo -e "${purple}Rustbee Daemon symlinked to /bin dir$white"

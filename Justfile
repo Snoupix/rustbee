@@ -84,6 +84,16 @@ build-gui-docker:
     git tag -a v{{ version }} -m "Release v{{ version }}"
     git push origin --tags
 
+@build-win dest_path:
+    {{DAEMON}} build-win
+    cargo build --release --target x86_64-pc-windows-gnu
+    echo -e "$purple[Rustbee CLI] Finished compiling !$white"
+    cp \
+        target/x86_64-pc-windows-gnu/release/rustbee.exe \
+        rustbee-daemon/target/x86_64-pc-windows-gnu/release/rustbee-daemon.exe \
+        dist/install_win.bat \
+        {{ dest_path }}
+
 install:
     #!/usr/bin/env bash
     if [[ ! -f ./target/release/rustbee || ! -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then

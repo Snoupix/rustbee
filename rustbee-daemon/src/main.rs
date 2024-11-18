@@ -20,10 +20,12 @@ use rustbee_common::bluetooth::*;
 use rustbee_common::constants::{
     MaskT, OutputCode, ADDR_LEN, BUFFER_LEN, OUTPUT_LEN, SET, SOCKET_PATH,
 };
+use rustbee_common::device::*;
 use rustbee_common::logger::*;
-use rustbee_common::BluetoothPeripheral as _;
+#[cfg(not(target_os = "windows"))]
+use rustbee_common::BluetoothPeripheralImpl as _;
 
-const TIMEOUT_SECS: u64 = 60 * 2;
+const TIMEOUT_SECS: u64 = 60 * 10;
 const FOUND_DEVICE_TIMEOUT_SECS: u64 = 30;
 
 static LOGGER: Logger = Logger::new("Rustbee-Daemon", false);
@@ -50,6 +52,7 @@ macro_rules! res_to_u8 {
 
 #[tokio::main]
 async fn main() {
+    #[cfg(not(target_os = "windows"))]
     check_if_path_is_writable().await;
 
     LOGGER.init();
@@ -102,6 +105,8 @@ async fn main() {
     for (_, device) in devices.lock().await.iter() {
         let _ = device.try_disconnect().await;
     }
+
+    #[cfg(not(target_os = "windows"))]
     std::fs::remove_file(SOCKET_PATH).unwrap();
 }
 
@@ -148,14 +153,14 @@ async fn process_conn(
                 let name =
                     String::from_utf8(data.iter().copied().filter(|c| *c != b'\0').collect())
                         .unwrap();
-                let mut stream_iter = search_devices_by_name::<Server>(&name, 10).await.unwrap();
+                let mut stream_iter = search_devices_by_name(&name, 10).await.unwrap();
                 let mut device_sent = 0;
 
                 while let Some(device) = stream_iter.next().await {
                     let mut buf = [0; OUTPUT_LEN];
                     buf[0] = OutputCode::Streaming.into();
 
-                    let addr = device.addr.into_inner();
+                    let addr = device.addr;
                     for (i, byte) in addr.iter().enumerate() {
                         buf[i + 1] = *byte;
                     }
@@ -242,6 +247,7 @@ async fn process_conn(
                 return;
             }
 
+            #[cfg(not(target_os = "windows"))]
             if hue_device.services().is_empty() {
                 // if let Err(error) = hue_device.try_pair().await {
                 //     error!(
@@ -253,21 +259,21 @@ async fn process_conn(
                 // }
                 if let Err(error) = hue_device.try_connect().await {
                     error!(
-                        "Unexpected error trying to connect with device {}: {error}",
+                        "Unexpected error trying to connect with device {:?}: {error}",
                         hue_device.addr
                     );
                     devices.remove(&addr).unwrap();
                     return;
                 }
                 if let Err(error) = hue_device.discover_services().await {
-                    error!("Unexpected error trying get GATT characteristics and services with device {}: {error}", hue_device.addr);
+                    error!("Unexpected error trying get GATT characteristics and services with device {:?}: {error}", hue_device.addr);
                     devices.remove(&addr).unwrap();
                     return;
                 }
             }
 
-            // Since we're not mutating the device internally, only the hashmap, we can clone the
-            // device and free the lock
+            // Since we're not mutating the device internally, only the hashmap (above), we
+            // can clone the device and free the lock
             let hue_device = hue_device.clone();
             drop(devices);
 

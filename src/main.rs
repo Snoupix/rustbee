@@ -4,19 +4,18 @@ mod cli;
 use std::process;
 
 use clap::Parser;
-use rustbee_common::bluetooth::*;
+use rustbee_common::device::*;
 use rustbee_common::logger::*;
 use rustbee_common::storage::Storage;
 use rustbee_common::utils::{launch_daemon, shutdown_daemon};
 
 use address::*;
 use cli::Command;
-use rustbee_common::BluetoothAddr;
 
 static LOGGER: Logger = Logger::new("Rustbee-CLI", true);
 
 #[tokio::main]
-async fn main() -> btleplug::Result<()> {
+async fn main() {
     let args = cli::Args::parse();
     let command: &mut Command = Box::leak(Box::new(args.command));
     let mut tasks = Vec::new();
@@ -31,7 +30,7 @@ async fn main() -> btleplug::Result<()> {
                 error!("ERROR: Couldn't launch rustbee-gui ({err})");
             }
 
-            return Ok(());
+            return;
         }
         Command::Shutdown { force } => {
             if let Err(err) = shutdown_daemon(force) {
@@ -39,7 +38,7 @@ async fn main() -> btleplug::Result<()> {
                 std::process::exit(1);
             }
 
-            return Ok(());
+            return;
         }
         Command::Logs {
             follow,
@@ -49,18 +48,18 @@ async fn main() -> btleplug::Result<()> {
             if purge {
                 LOGGER.purge();
 
-                return Ok(());
+                return;
             }
 
             if follow {
                 LOGGER.follow(tail).await;
 
-                return Ok(());
+                return;
             }
 
             LOGGER.print(tail);
 
-            return Ok(());
+            return;
         }
         _ => (),
     }
@@ -75,7 +74,7 @@ async fn main() -> btleplug::Result<()> {
 
     if addresses.is_empty() {
         error!("No device MAC address(es) specified nor found on local storage");
-        return Ok(());
+        return;
     }
 
     if let Err(err) = launch_daemon().await {
@@ -87,7 +86,7 @@ async fn main() -> btleplug::Result<()> {
     // Client variant so the turbofish would be useless
     let hue_devices = addresses
         .iter()
-        .map(|addr| HueDevice::new(BluetoothAddr::from(*addr)))
+        .map(|addr| HueDevice::new(*addr))
         .collect::<Vec<_>>();
 
     for hue_device in hue_devices {
@@ -95,7 +94,7 @@ async fn main() -> btleplug::Result<()> {
     }
 
     for task in tasks {
-        task.await.expect("Failed to spawn async tokio task")?;
+        task.await.expect("Failed to spawn async tokio task");
     }
 
     if args.save {
@@ -103,8 +102,7 @@ async fn main() -> btleplug::Result<()> {
     }
 
     if args.one_shot {
-        return shutdown_daemon(false).map_err(|err| btleplug::Error::Other(Box::new(err)));
+        shutdown_daemon(false).unwrap();
+        return;
     }
-
-    Ok(())
 }

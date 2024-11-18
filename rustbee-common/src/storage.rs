@@ -3,6 +3,8 @@ use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
+use log::*;
+
 use crate::constants::{ADDR_LEN, APP_ID};
 
 type Data = HashMap<[u8; ADDR_LEN], SavedDevice>;
@@ -27,15 +29,34 @@ impl Storage {
         }
     }
 
-    pub fn try_default() -> Result<Self, &'static str> {
+    pub fn try_default() -> Result<Self, String> {
+        // yes, eframe is imported only for that :clown:
+        // TODO: Impl cross-platform storage_dir
         let path = eframe::storage_dir(APP_ID);
 
         if path.is_none() {
-            return Err("Cannot get default eframe::storage_dir, please use Storage::new and specify the path");
+            return Err("Cannot get default eframe::storage_dir, please use Storage::new and specify the path".into());
+        }
+
+        let path = path.unwrap();
+
+        #[cfg(target_os = "windows")]
+        {
+            let mut path = path.clone();
+            path.pop();
+            let exists = std::fs::exists(path.clone());
+            if exists.is_err() || !exists.unwrap() {
+                if let Err(err) = std::fs::create_dir(path.clone()) {
+                    return Err(format!(
+                        "Failed to create storage dir at {} ({err})",
+                        path.display()
+                    ));
+                }
+            }
         }
 
         Ok(Self {
-            path: path.unwrap(),
+            path,
             data: HashMap::new(),
         })
     }
@@ -78,10 +99,7 @@ impl Storage {
 
         match serde_json::from_str::<HashMap<String, SavedDevice>>(&content) {
             Ok(data) => self.data = self.deserialize_data(data),
-            Err(err) => {
-                // TODO: Use logger
-                eprintln!("Failed to deserialize saved data {err}");
-            }
+            Err(err) => error!("Failed to deserialize saved data {err}"),
         }
     }
 
@@ -127,8 +145,7 @@ impl Storage {
                 .expect("Cannot parse storage data to String")
                 .as_bytes(),
         ) {
-            // TODO: Use logger
-            eprintln!("Failed to write to storage file data {err}");
+            error!("Failed to write to storage file data {err}");
             return;
         }
 

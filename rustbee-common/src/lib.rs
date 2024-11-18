@@ -1,20 +1,27 @@
-pub mod bluetooth;
 pub mod colors;
 pub mod constants;
+pub mod device;
 pub mod logger;
 pub mod storage;
+pub mod utils;
 
-mod daemon;
+#[cfg(not(target_os = "windows"))]
+mod linux;
+
+#[cfg(target_os = "windows")]
+mod windows;
 
 #[cfg(test)]
 mod tests;
 
-pub use btleplug::api::{BDAddr as BluetoothAddr, Peripheral as BluetoothPeripheral};
-pub use color_space;
-
-pub mod utils {
-    pub use super::daemon::*;
-}
-
 #[cfg(feature = "ffi")]
 mod ffi;
+
+#[cfg(not(target_os = "windows"))]
+pub use linux::*;
+
+#[cfg(target_os = "windows")]
+pub use windows::*;
+
+// Re-exports
+pub use color_space;
