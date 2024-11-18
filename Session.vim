@@ -18,15 +18,14 @@ badd +100 rustbee
 badd +1 .gitignore
 badd +1017 rustbee-gui/src/main.rs
 badd +9 Cargo.toml
-badd +28 rustbee-common/src/lib.rs
+badd +27 rustbee-common/src/lib.rs
 badd +18 rustbee-common/src/constants.rs
 badd +65 src/main.rs
 badd +249 rustbee-daemon/src/main.rs
 badd +233 rustbee-common/src/colors.rs
-badd +38 rustbee-common/src/bluetooth.rs
 badd +11 rustbee-gui/Cargo.toml
 badd +153 src/cli.rs
-badd +4 rustbee-common/Cargo.toml
+badd +10 rustbee-common/Cargo.toml
 badd +32 rustbee-common/src/tests.rs
 badd +57 Justfile
 badd +8 rustbee-gui/Justfile
@@ -38,7 +37,7 @@ badd +56 rustbee-common/src/ffi.rs
 badd +34 rustbee-common/src/storage.rs
 badd +9 src/address.rs
 badd +52 rustbee-common/src/logger.rs
-badd +198 .github/workflows/build_and_release.yml
+badd +53 .github/workflows/build_and_release.yml
 badd +11 CHANGELOG.md
 badd +6 TODO.md
 badd +74 rustbee-common/src/windows/bluetooth.rs
@@ -50,11 +49,13 @@ badd +2 rustbee-common/src/windows/mod.rs
 badd +16 rustbee-common/src/utils/mod.rs
 badd +94 rustbee-common/src/windows/daemon.rs
 badd +1 dist/install_win.bat
+badd +13 .github/dependabot.yml
+badd +6 .github/workflows/clippy_lint.yml
 argglobal
 %argdel
 edit rustbee-common/src/lib.rs
 argglobal
-balt dist/install_win.bat
+balt rustbee-common/Cargo.toml
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -65,12 +66,12 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 28 - ((27 * winheight(0) + 27) / 55)
+let s:l = 27 - ((26 * winheight(0) + 27) / 55)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 28
-normal! 0
+keepjumps 27
+normal! 05|
 tabnext 1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0 && getbufvar(s:wipebuf, '&buftype') isnot# 'terminal'
   silent exe 'bwipe ' . s:wipebuf
@@ -83,7 +84,6 @@ if filereadable(s:sx)
   exe "source " . fnameescape(s:sx)
 endif
 let &g:so = s:so_save | let &g:siso = s:siso_save
-nohlsearch
 doautoall SessionLoadPost
 unlet SessionLoad
 " vim: set ft=vim :

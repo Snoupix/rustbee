@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [v0.1.0] - 2024-11-18
+
+### Changed
+
+- [lib] Breaking changes:
+- - Bluetooth get_device(s) and search_devices_by_name will now return exclusively HueDevice<Server> variant since it's only supposed to be used server side
+- - HueDevice addr field is now the raw [u8; 6] for interop
+
+- [lib] Changes/Fixes:
+- - Use of `bluest` for the Windows BTLE implementation and `btleplug` for Linux
+- - Use of logger instead of stdout/stderr
+- - BT streams will not return duplicates
+- - Implementation of the launch/shutdown functions for Windows
+
+### Added
+
+- Script to prepare Windows install and set permissions on executables
+
+### Fixed
+
+- Fix FFI cross platform
+
 ## [v0.0.2] - 2024-11-10
 
 ### Changed
