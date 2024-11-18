@@ -36,6 +36,10 @@ jobs:
     - name: Cache cargo & target directories
       uses: Swatinem/rust-cache@v2
 
+    - name: Install dependencies
+      run: |
+        sudo apt install libdbus-1-dev pkg-config
+
     - name: Lint and Check every Rust dir with Clippy
       working-directory: ${{ matrix.directories.path }}
       run:
