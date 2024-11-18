@@ -1,0 +1,15 @@
+# https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
+
+version: 2
+
+updates:
+  - package-ecosystem: "cargo"
+    directories:
+      - "/"
+      - "rustbee-common"
+      - "rustbee-daemon"
+      - "rustbee-gui"
+    assignees:
+      - Snoupix
+    schedule:
+      interval: "weekly"
