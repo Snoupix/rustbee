@@ -3,7 +3,7 @@
 - [x] Impl interop for the daemon socket (path...)
 - [x] Migrate from bluez to bleplug for interop (lost pair and trust features on the process)
 - [x] Clarify CLI args (add descriptions)
-- [ ] When finished with GUI impl, try to impl WASM build target
+~[ ] When finished with GUI impl, try to impl WASM build target~
 - [x] Impl CLI data lights save and maybe share it with GUI
 - - [x] Impl shared Storage using ~eframe::Storage trait~ (didn't because it links String to String and I would parse data all around)
 - [ ] [CLI] Find a way to select a device with a better UX ?
@@ -18,3 +18,11 @@
 - [ ] Impl CHANGES.md and INSTRUCTIONS.txt files for the release on v1.0.0 and push a tag when v1 is out so the release action is triggered automatically (also, change the changes-file field on the CI).
 - [ ] Impl unit and integration tests
 - [ ] Add a C dyn lib to pre-built releases with the CI and add the header file
+- [ ] [GUI] Migrate eframe/egui to tauri
+- - [ ] Match old state
+- - [ ] Finish features impl
+- - [ ] Take a look at installer/updater https://tauri.app/plugin/updater/
+- - [ ] Set capabilities https://tauri.app/security/capabilities/
+- - [ ] Impl a sys tray so users can close the window https://tauri.app/learn/system-tray/
+- - [ ] Update the GH actions using https://github.com/tauri-apps/tauri-action
+- - [ ] Use https://tauri.app/plugin/clipboard/ ?
