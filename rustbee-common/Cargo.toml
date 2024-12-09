@@ -21,6 +21,6 @@ interprocess = { version = "2.2.2", features = ["tokio"] }
 log = "0.4.22"
 serde = "1.0.215"
 serde_json = "1.0.133"
-tokio = { version = "1.41.1", features = ["fs", "macros", "process", "signal"] }
+tokio = { version = "1.42.0", features = ["fs", "macros", "process", "signal"] }
 uuid = "1.11.0"
 windows = { version = "0.58.0", features = ["Devices_Bluetooth", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading"] }
