@@ -8,4 +8,4 @@ eframe = { version = "0.28.1", features = ["persistence"] }
 egui_extras = { version = "0.28.1", features = ["all_loaders"] }
 futures = "0.3.30"
 rustbee-common = { path = "../rustbee-common" }
-tokio = { version = "1.41.1", features = ["macros", "rt", "rt-multi-thread", "sync"] }
+tokio = { version = "1.42.0", features = ["macros", "rt", "rt-multi-thread", "sync"] }
