@@ -1,156 +1,112 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
+	import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
+	import { onMount } from "svelte";
+	import ColorPicker from "svelte-awesome-color-picker";
 
-  let name = $state("");
-  let greetMsg = $state("");
+	import Header from "$/components/header.svelte";
 
-  async function greet(event: Event) {
-    event.preventDefault();
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsg = await invoke("greet", { name });
-  }
+	import { rust_fn_e, log_level_e } from "$/lib/types";
+	import type { LogLevel, RustFn, Device, Devices, State } from "$/lib/types";
+
+	let power = $state(false);
+	let loading = $state(false);
+	let error = $state("");
+	let state: State | null = $state(null);
+	let devices: Devices | null = $state(null);
+
+	onMount(async () => {
+		state = await call(rust_fn_e.get_state);
+
+		const _devices = new Map(Object.entries(await call<{ [s: string]: Device }>(rust_fn_e.get_devices)));
+		_devices.forEach((v, k) => {
+			if (devices == null) {
+				devices = new Map();
+			}
+
+			devices.set(JSON.parse(k), v);
+		});
+
+		console.log(devices);
+	});
+
+	async function log(data: string, log_level: LogLevel) {
+		console.log(log_level, data);
+		await invoke("log", { data, log_level });
+	}
+
+	async function call<T>(fn: RustFn, args?: InvokeArgs): Promise<T> {
+		loading = true;
+
+		return (await invoke(fn, args)
+			.catch(async err => {
+                error = err;
+                await log(err, log_level_e.error)
+            })
+			.finally(() => (loading = false))) as T;
+	}
+
+	async function set_power(addr: Array<number>, power_state: boolean) {
+		error = await invoke("set_power", { addr, power_state });
+	}
+
+	async function set_brightness_all(brightness: number) {
+		error = await invoke("set_brightness_all", { brightness });
+	}
+
+	async function set_brightness(addr: Array<number>, brightness: number) {
+		error = await invoke("set_brightness", { addr, brightness });
+	}
 </script>
 
-<main class="container">
-  <h1>Welcome to Tauri + Svelte</h1>
-
-  <div class="row">
-    <a href="https://vitejs.dev" target="_blank">
-      <img src="/vite.svg" class="logo vite" alt="Vite Logo" />
-    </a>
-    <a href="https://tauri.app" target="_blank">
-      <img src="/tauri.svg" class="logo tauri" alt="Tauri Logo" />
-    </a>
-    <a href="https://kit.svelte.dev" target="_blank">
-      <img src="/svelte.svg" class="logo svelte-kit" alt="SvelteKit Logo" />
-    </a>
-  </div>
-  <p>Click on the Tauri, Vite, and SvelteKit logos to learn more.</p>
-
-  <form class="row" onsubmit={greet}>
+<main>
+	<Header />
+	{#if loading}
+		<div>loading...</div>
+	{/if}
+	<button
+		onclick={async () => {
+			await call(rust_fn_e.set_power_all, { power_state: power });
+			power = !power;
+		}}>Toggle power all</button>
+	<input type="range" min={0} max={100} onchange={e => set_brightness_all(parseInt(e.currentTarget.value))} />
+	{#each devices! as [addr, device] (addr)}
+		<div>
+			<h2>
+				{device.name || "Device name unknown"} - {addr
+					.map(x => x.toString(16).toUpperCase().padStart(2, "0"))
+					.join(":")}
+			</h2>
+			<span>{device.power_state}</span>
+			<span>{device.is_found}</span>
+			<span>{device.brightness}</span>
+			<span>{device.is_connected}</span>
+			<span>{device.current_color.actual_value}</span>
+			<ColorPicker />
+		</div>
+	{/each}
+	<!-- <form class="row" onsubmit={greet}>
     <input id="greet-input" placeholder="Enter a name..." bind:value={name} />
     <button type="submit">Greet</button>
-  </form>
-  <p>{greetMsg}</p>
+  </form> -->
+	<p>{error}</p>
 </main>
 
-<style>
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
+<style lang="postcss">
+	main {
+		@apply flex flex-col justify-center items-center text-center w-screen h-screen pt-[10vh] bg-secondary text-primary;
 
-.logo.svelte-kit:hover {
-  filter: drop-shadow(0 0 2em #ff3e00);
-}
+		input[type="range"] {
+			@apply w-[50%];
+		}
+	}
 
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
+	button {
+		@apply text-primary border border-solid border-primary rounded-lg px-[2vw] py-[1vh] bg-secondary bg-opacity-25 cursor-pointer;
 
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
-
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
-  display: flex;
-  justify-content: center;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
-}
-
-#greet-input {
-  margin-right: 5px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
-
-  a:hover {
-    color: #24c8db;
-  }
-
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
-}
-
+		&:hover {
+			border-color: var(--bg-color);
+			background-color: var(--color);
+			color: var(--bg-color);
+		}
+	}
 </style>

@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+	font-family: "Monaspace-Krypton";
+	src: url("/MonaspaceKrypton-Regular.otf");
+}
+
+:global(*) {
+	margin: 0;
+	padding: 0;
+
+	font-size: 16px;
+	line-height: 24px;
+	font-weight: 400;
+
+	font-family: Monaspace-Krypton, Helvetica, Arial, sans-serif;
+}

@@ -26,3 +26,4 @@
 - - [ ] Impl a sys tray so users can close the window https://tauri.app/learn/system-tray/
 - - [ ] Update the GH actions using https://github.com/tauri-apps/tauri-action
 - - [ ] Use https://tauri.app/plugin/clipboard/ ?
+- - [ ] Auto connect on startup like the official mobile app
