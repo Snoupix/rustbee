@@ -73,9 +73,6 @@ build-gui-docker:
 @debug-gui:
     {{GUI}} debug
 
-@debug-gui-win dest_path:
-    {{GUI}} debug-win {{ dest_path }}
-
 # Used for new releases, version is x.x.x without the 'v'
 @push-ver version:
     sed '0,/version = ".*"/ s//version = "{{ version }}"/' -i rustbee-common/Cargo.toml

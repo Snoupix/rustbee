@@ -30,7 +30,7 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-#[derive(Debug, Default, Hash)]
+#[derive(Clone, Debug, Default, Hash, serde::Serialize)]
 pub struct FoundDevice {
     pub address: [u8; ADDR_LEN],
     pub name: String,

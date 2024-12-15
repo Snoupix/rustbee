@@ -1,0 +1,26 @@
+[private]
+_default:
+    @echo "[ERROR] Just commands must be run on the root of the project"
+
+[private]
+@build:
+    cargo build --release
+    sudo setcap cap_dac_read_search+ep ./target/release/rustbee-gui
+    echo -e "$purple[Rustbee GUI] Finished compiling !$white"
+
+# TODO
+#[private]
+#build-docker:
+
+[private]
+@debug:
+    pnpm tauri dev
+
+# TODO
+#[private]
+#install:
+
+[private]
+@uninstall:
+    -cargo clean > /dev/null 2>&1
+    -sudo rm /bin/rustbee-gui > /dev/null 2>&1
