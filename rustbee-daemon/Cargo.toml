@@ -5,6 +5,6 @@ edition = "2021"
 
 [dependencies]
 interprocess = { version = "2.2.2", features = ["tokio"] }
-tokio = { version = "1.42.0", features = ["fs", "rt", "macros", "signal", "rt-multi-thread", "time"] }
+tokio = { version = "1.43.0", features = ["fs", "rt", "macros", "signal", "rt-multi-thread", "time"] }
 rustbee-common = { path = "../rustbee-common" }
 futures = "0.3.30"
