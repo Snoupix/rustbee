@@ -238,12 +238,6 @@ impl Command {
                         if r.is_none() || g.is_none() || b.is_none() {
                             read = true;
                         } else {
-                            // let xyz = Xyz::from_rgb(&Rgb::new(
-                            //     r.unwrap() as _,
-                            //     g.unwrap() as _,
-                            //     b.unwrap() as _,
-                            // ));
-                            // (x, y) = (xyz.x / 100., xyz.y / 100.);
                             let xy = Xy::from(Rgb::new(
                                 r.unwrap() as _,
                                 g.unwrap() as _,
@@ -275,8 +269,8 @@ impl Command {
                             else {
                                 panic!("Unexpected error: cannot get RGB values from HEX {hex}")
                             };
-                            let xyz = Xyz::from_rgb(&Rgb::new(r, g, b));
-                            (x, y) = (xyz.x / 100., xyz.y / 100.);
+                            let xy = Xy::from(Rgb::new(r, g, b));
+                            (x, y) = (xy.x / 100., xy.y / 100.);
                         }
                     }
                     Self::ColorXy {
@@ -305,58 +299,42 @@ impl Command {
                         let x = u16::from_le_bytes([data[0], data[1]]) as f64 / 0xFFFF as f64;
                         let y = u16::from_le_bytes([data[2], data[3]]) as f64 / 0xFFFF as f64;
                         let xy = Xy::new(x, y);
-                        let xyz = Xyz::new(x, y, 1. - x - y);
 
-                        // TODO: Fix colors display / color processing
+                        let (res, brightness) = hue_device.get_brightness().await;
+                        let success = res.is_success();
+
+                        if !success {
+                            error!("Failed to get brightness to calculate XYZ color");
+                            return;
+                        }
+
+                        let rgb = xy.to_rgb(brightness[0] as f64 / 255.);
+
                         match self {
                             Self::ColorRgb { .. } => {
-                                let (res, brightness) = hue_device.get_brightness().await;
-                                let success = res.is_success();
-
-                                if !success {
-                                    error!("Failed to get brightness to calculate XYZ color");
-                                    return;
-                                }
-
-                                let rgb = xy.to_rgb(brightness[0] as f64 / 255.);
-                                assert!(rgb.r * 100. <= 255.);
-                                assert!(rgb.g * 100. <= 255.);
-                                assert!(rgb.b * 100. <= 255.);
-                                info!(
-                                    "Device color is ({:.0}, {:.0}, {:.0}) ({:?})",
-                                    rgb.r * 100.,
-                                    rgb.g * 100.,
-                                    rgb.b * 100.,
-                                    Rgb::from(xyz)
-                                );
+                                info!("Device color is ({:.0}, {:.0}, {:.0})", rgb.r, rgb.g, rgb.b,);
                             }
                             Self::ColorHex { .. } => {
-                                let rgb = Rgb::from(xyz);
                                 let hex = [rgb.b as u8, rgb.g as u8, rgb.r as u8]
                                     .into_iter()
                                     .fold(String::new(), |_, v| format!("{v:06x}"));
                                 info!("Device color is #{hex}");
                             }
                             Self::ColorXy { .. } => {
-                                info!("Device color is x: {:.3}, y: {:.3}", xyz.x, xyz.y);
+                                info!("Device color is x: {:.3}, y: {:.3}", xy.x, xy.y);
                             }
                             _ => unreachable!(),
                         }
                     }
-                } else {
-                    let scaled_x = (x * 0xFFFF as f64) as u16;
-                    let scaled_y = (y * 0xFFFF as f64) as u16;
-
-                    if !hue_device
-                        .set_colors(scaled_x, scaled_y, MaskT::from(self))
-                        .await
-                        .is_success()
-                    {
-                        error!(
-                            "Daemon failed to disconnect from device {:?}",
-                            hue_device.addr
-                        );
-                    }
+                } else if !hue_device
+                    .set_colors(x, y, MaskT::from(self))
+                    .await
+                    .is_success()
+                {
+                    error!(
+                        "Daemon failed to disconnect from device {:?}",
+                        hue_device.addr
+                    );
                 }
             }
             Self::Disconnect => {

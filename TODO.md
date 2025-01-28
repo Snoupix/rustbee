@@ -23,7 +23,10 @@
 - - [ ] Finish features impl
 - - [ ] Take a look at installer/updater https://tauri.app/plugin/updater/
 - - [ ] Set capabilities https://tauri.app/security/capabilities/
-- - [ ] Impl a sys tray so users can close the window https://tauri.app/learn/system-tray/
+- - [ ] Impl a sys tray so users can close the window while the state and the daemon are staying up https://tauri.app/learn/system-tray/
 - - [ ] Update the GH actions using https://github.com/tauri-apps/tauri-action
 - - [ ] Use https://tauri.app/plugin/clipboard/ ?
 - - [ ] Auto connect on startup like the official mobile app
+- - [ ] Impl drag & drop && devices order
+- - [ ] Save device(s) state to disk periodically
+- - [ ] FILL CHANGELOG

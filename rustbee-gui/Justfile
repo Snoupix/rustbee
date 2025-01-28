@@ -1,3 +1,5 @@
+set fallback
+
 [private]
 _default:
     @echo "[ERROR] Just commands must be run on the root of the project"

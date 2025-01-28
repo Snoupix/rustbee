@@ -9,3 +9,4 @@ app.css
 *.md
 .svelte-kit/
 build/
+.pnpm-store/

@@ -18,8 +18,6 @@ pub type ParsedAppDevices = HashMap<String, HueDeviceWrapper>;
 #[derive(Clone)]
 pub struct GlobalState {
     pub storage: Storage,
-    // TODO: Async functions have their own runtime on Tauri; this may be useless
-    // pub tokio_rt: tokio::runtime::Runtime,
     pub devices_color: Debounce<[u8; 3]>,
     pub devices_brightness: Debounce<u8>,
     pub device_error: Option<String>,
@@ -30,13 +28,9 @@ pub struct GlobalState {
 }
 
 impl GlobalState {
-    pub fn new(
-        /* tokio_rt: tokio::runtime::Runtime, */ lowest_brightness: u8,
-        storage: Storage,
-    ) -> Self {
+    pub fn new(lowest_brightness: u8, storage: Storage) -> Self {
         Self {
             storage,
-            // tokio_rt,
             devices_color: Debounce::new([0; 3], Duration::from_secs(DEBOUNCE_SECS)),
             devices_brightness: Debounce::new(lowest_brightness, Duration::from_secs(1)),
             device_error: None,

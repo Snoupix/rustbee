@@ -5,23 +5,17 @@ mod commands;
 mod state;
 
 use std::collections::HashMap;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::{FutureExt, StreamExt as _};
 use tauri::{Manager, Theme};
-use tokio::runtime::{self, Runtime};
-use tokio::sync::{
-    watch::{channel, Receiver},
-    RwLock,
-};
-use tokio::time::{self, Instant};
+use tokio::runtime;
+use tokio::sync::RwLock;
+use tokio::time::Instant;
 
-use rustbee_common::color_space::Rgb;
 use rustbee_common::colors::Xy;
-use rustbee_common::constants::{
-    masks, OutputCode, ADDR_LEN, APP_ID, DATA_LEN, GUI_SAVE_INTERVAL_SECS,
-};
+use rustbee_common::constants::{masks, OutputCode, DATA_LEN};
 use rustbee_common::logger::Logger;
 use rustbee_common::storage::Storage;
 use rustbee_common::utils::launch_daemon;
@@ -29,15 +23,19 @@ use rustbee_common::utils::launch_daemon;
 use state::*;
 
 const SEARCH_MAX_CHARS: usize = DATA_LEN;
-const DEVICE_STATE_UPDATE_SECS: u64 = 60;
+const DEVICE_STATE_UPDATE_SECS: u64 = 10;
 const DEBOUNCE_SECS: u64 = 5;
 
 static LOGGER: Logger = Logger::new("Rustbee-GUI", false);
+static HAS_SYNC_LOOP_STARTED: AtomicBool = AtomicBool::new(false);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 fn main() {
     LOGGER.init();
 
+    // Async runtime mainly used for the daemon launch and the thread loop that syncs the
+    // devices state. It's provided within the app state but shouldn't be necessary
+    // since Tauri provides an async runtime on commands
     let rt = runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -64,34 +62,13 @@ fn main() {
 
     drop(devices_guard);
 
-    let _devices_state = Arc::clone(&devices_state);
-
-    // Thread used to sync devices state on a loop every x ms
-    // There must be a loop to update state in case devices' state gets updated by a thrird party app
-    rt.spawn(async move {
-        loop {
-            for (_, device) in _devices_state.write().await.iter_mut() {
-                if device.last_update.elapsed() < Duration::from_secs(DEVICE_STATE_UPDATE_SECS) {
-                    continue;
-                }
-
-                update_device_state(device).await;
-            }
-
-            time::sleep(Duration::from_millis(1000)).await;
-        }
-    });
-
-    let global_state = Arc::new(RwLock::new(GlobalState::new(
-        // rt,
-        lowest_brightness,
-        storage,
-    )));
+    let global_state = Arc::new(RwLock::new(GlobalState::new(lowest_brightness, storage)));
 
     tauri::Builder::default()
-        .setup(|app| {
+        .setup(move |app| {
             app.manage(global_state);
             app.manage(devices_state);
+            app.manage(rt);
             app.set_theme(Some(Theme::Dark));
 
             Ok(())
@@ -104,7 +81,11 @@ fn main() {
             commands::set_power_all,
             commands::get_devices,
             commands::log,
-            commands::get_global_state
+            commands::get_global_state,
+            commands::update_devices,
+            commands::init,
+            commands::set_device_colors,
+            commands::set_devices_colors,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

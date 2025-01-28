@@ -160,8 +160,11 @@ where
             .await
     }
 
-    pub async fn set_colors(&self, scaled_x: u16, scaled_y: u16, color_mask: MaskT) -> OutputCode {
+    pub async fn set_colors(&self, x: f64, y: f64, color_mask: MaskT) -> OutputCode {
         assert!([COLOR_XY, COLOR_RGB, COLOR_HEX].contains(&color_mask));
+
+        let scaled_x = (x * 0xFFFF as f64) as u16;
+        let scaled_y = (y * 0xFFFF as f64) as u16;
 
         let mut buf = EMPTY_BUFFER;
         buf[0] = SET;

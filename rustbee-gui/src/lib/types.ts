@@ -9,7 +9,11 @@ export type DeviceFound = {
 	name: String;
 };
 
-export type Devices = Map<Array<number>, Device>;
+export type DevicesPayload = { [_: string]: Device };
+
+// The string key is actually an Array<number> of length 6, the device's address but
+// the standard JS hasher doesn't work for dynamic arrays or even Uint8Array
+export type Devices = Map<string, Device>;
 export type Device = {
 	name: string;
 	is_found: boolean;
@@ -41,4 +45,8 @@ export const rust_fn_e = Object.freeze({
 	set_brightness: "set_brightness",
 	set_brightness_all: "set_brightness_all",
 	get_brightness: "get_brightness",
+	update_devices: "update_devices",
+	fetch_init_state: "init",
+	set_colors: "set_device_colors",
+	set_colors_all: "set_devices_colors",
 });

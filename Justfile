@@ -13,6 +13,8 @@ socket_path := `cat rustbee-common/src/constants.rs | grep "const SOCKET_PATH" |
 export purple := "\\e[35m"
 export red := "\\e[31m"
 export white := "\\e[0m"
+# Used for the Go example
+export LD_LIBRARY_PATH := justfile_dir() / "ffi-examples/go"
 
 alias ba := build-all
 alias ia := install-all
@@ -72,6 +74,31 @@ build-gui-docker:
 
 @debug-gui:
     {{GUI}} debug
+
+# Ex stands for example
+@run-go-ex *args: build-lib
+    cp rustbee-common/librustbee.h rustbee-common/target/release/librustbee_common.so ffi-examples/go
+    mv ffi-examples/go/librustbee_common.so ffi-examples/go/librustbee.so
+    cd ffi-examples/go && \
+    go run . {{args}}
+    rm ffi-examples/go/librustbee.so ffi-examples/go/librustbee.h
+
+# Ex stands for example
+@run-deno-ex *args: build-lib
+    cp rustbee-common/librustbee.h rustbee-common/target/release/librustbee_common.so ffi-examples/deno
+    mv ffi-examples/deno/librustbee_common.so ffi-examples/deno/librustbee.so
+    cd ffi-examples/deno && \
+    deno run --allow-ffi main.ts {{args}}
+    rm ffi-examples/deno/librustbee.so ffi-examples/deno/librustbee.h
+
+# Ex stands for example
+@run-zig-ex *args: build-lib
+    cp rustbee-common/librustbee.h rustbee-common/target/release/librustbee_common.so ffi-examples/zig
+    mv ffi-examples/zig/librustbee_common.so ffi-examples/zig/librustbee.so
+    cd ffi-examples/zig && \
+    zig build && \
+    ./zig-out/bin/zig {{args}}
+    rm ffi-examples/zig/librustbee.so ffi-examples/zig/librustbee.h
 
 # Used for new releases, version is x.x.x without the 'v'
 @push-ver version:

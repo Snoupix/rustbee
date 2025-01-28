@@ -1,112 +1,97 @@
 <script lang="ts">
-	import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
-	import { onMount } from "svelte";
-	import ColorPicker from "svelte-awesome-color-picker";
+	import { onDestroy, onMount } from "svelte";
+	import { event } from "@tauri-apps/api";
+
+	import type { UnlistenFn } from "@tauri-apps/api/event";
 
 	import Header from "$/components/header.svelte";
+	import Subheader from "$/components/subheader.svelte";
+	import Device from "$/components/device.svelte";
+	import { call, error, devices, update_devices, fetch_initial_state, log } from "$/lib/stores/caller";
+	import { log_level_e, rust_fn_e } from "$/lib/types";
 
-	import { rust_fn_e, log_level_e } from "$/lib/types";
-	import type { LogLevel, RustFn, Device, Devices, State } from "$/lib/types";
+	import type { DevicesPayload } from "$/lib/types";
 
-	let power = $state(false);
-	let loading = $state(false);
-	let error = $state("");
-	let state: State | null = $state(null);
-	let devices: Devices | null = $state(null);
+	let state_unlisten: UnlistenFn | null = $state(null);
+	let is_browser = $state(false);
 
 	onMount(async () => {
-		state = await call(rust_fn_e.get_state);
+		// @ts-ignore window isn't typed but nvm
+		if (!window?.__TAURI_INTERNALS__) {
+			is_browser = true;
+			return;
+		}
 
-		const _devices = new Map(Object.entries(await call<{ [s: string]: Device }>(rust_fn_e.get_devices)));
-		_devices.forEach((v, k) => {
-			if (devices == null) {
-				devices = new Map();
-			}
+		await fetch_initial_state();
+		await update_devices();
 
-			devices.set(JSON.parse(k), v);
+		state_unlisten = await event.listen("device_sync", async event => {
+			await log(JSON.stringify(event.payload), log_level_e.info);
+			await update_devices(event.payload as DevicesPayload);
 		});
-
-		console.log(devices);
 	});
 
-	async function log(data: string, log_level: LogLevel) {
-		console.log(log_level, data);
-		await invoke("log", { data, log_level });
-	}
-
-	async function call<T>(fn: RustFn, args?: InvokeArgs): Promise<T> {
-		loading = true;
-
-		return (await invoke(fn, args)
-			.catch(async err => {
-                error = err;
-                await log(err, log_level_e.error)
-            })
-			.finally(() => (loading = false))) as T;
-	}
+	onDestroy(() => {
+		if (state_unlisten != null) {
+			state_unlisten();
+		}
+	});
 
 	async function set_power(addr: Array<number>, power_state: boolean) {
-		error = await invoke("set_power", { addr, power_state });
+		await call(rust_fn_e.set_power, { addr, power_state });
 	}
 
 	async function set_brightness_all(brightness: number) {
-		error = await invoke("set_brightness_all", { brightness });
+		await call(rust_fn_e.set_brightness_all, { brightness });
 	}
 
 	async function set_brightness(addr: Array<number>, brightness: number) {
-		error = await invoke("set_brightness", { addr, brightness });
+		await call(rust_fn_e.set_brightness, { addr, brightness });
 	}
 </script>
 
 <main>
-	<Header />
-	{#if loading}
-		<div>loading...</div>
+	{#if is_browser}
+		<section class="is-browser">
+			<h1>Sorry, you can only use Rustbee on the GUI and not your browser (yet ?).</h1>
+		</section>
+	{:else}
+		<Header />
+		<Subheader />
+
+		<section class="main">
+			<div class="device-wrapper">
+				{#if $devices != null && $devices!.size > 0}
+					{#each $devices as [addr, device] (addr)}
+						<Device {addr} {device} />
+					{/each}
+				{/if}
+			</div>
+
+			{#if $error != null}
+				<button onclick={() => ($error = null)}>clear error message</button>
+				<h1>{$error}</h1>
+			{/if}
+		</section>
 	{/if}
-	<button
-		onclick={async () => {
-			await call(rust_fn_e.set_power_all, { power_state: power });
-			power = !power;
-		}}>Toggle power all</button>
-	<input type="range" min={0} max={100} onchange={e => set_brightness_all(parseInt(e.currentTarget.value))} />
-	{#each devices! as [addr, device] (addr)}
-		<div>
-			<h2>
-				{device.name || "Device name unknown"} - {addr
-					.map(x => x.toString(16).toUpperCase().padStart(2, "0"))
-					.join(":")}
-			</h2>
-			<span>{device.power_state}</span>
-			<span>{device.is_found}</span>
-			<span>{device.brightness}</span>
-			<span>{device.is_connected}</span>
-			<span>{device.current_color.actual_value}</span>
-			<ColorPicker />
-		</div>
-	{/each}
-	<!-- <form class="row" onsubmit={greet}>
-    <input id="greet-input" placeholder="Enter a name..." bind:value={name} />
-    <button type="submit">Greet</button>
-  </form> -->
-	<p>{error}</p>
 </main>
 
 <style lang="postcss">
 	main {
-		@apply flex flex-col justify-center items-center text-center w-screen h-screen pt-[10vh] bg-secondary text-primary;
+		@apply w-screen h-screen bg-secondary text-primary;
 
-		input[type="range"] {
-			@apply w-[50%];
+		.is-browser {
+			@apply pb-44 w-screen h-screen flex justify-center items-center text-center;
 		}
-	}
 
-	button {
-		@apply text-primary border border-solid border-primary rounded-lg px-[2vw] py-[1vh] bg-secondary bg-opacity-25 cursor-pointer;
+		.main {
+			@apply flex flex-col justify-center items-center text-center w-full bg-secondary text-primary overflow-y-scroll;
 
-		&:hover {
-			border-color: var(--bg-color);
-			background-color: var(--color);
-			color: var(--bg-color);
+			height: calc(100% - (theme("height.header") + theme("height.subheader")));
+
+			.device-wrapper {
+				@apply flex flex-row flex-wrap gap-8 w-full h-full p-8;
+			}
 		}
 	}
 </style>
