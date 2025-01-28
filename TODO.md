@@ -18,15 +18,16 @@
 - [ ] Impl CHANGES.md and INSTRUCTIONS.txt files for the release on v1.0.0 and push a tag when v1 is out so the release action is triggered automatically (also, change the changes-file field on the CI).
 - [ ] Impl unit and integration tests
 - [ ] Add a C dyn lib to pre-built releases with the CI and add the header file
-- [ ] [GUI] Migrate eframe/egui to tauri
-- - [ ] Match old state
+- [x] [GUI] Migrate eframe/egui to tauri
+- - [x] Match old state
 - - [ ] Finish features impl
-- - [ ] Take a look at installer/updater https://tauri.app/plugin/updater/
+- - Take a look at installer/updater https://tauri.app/plugin/updater/
 - - [ ] Set capabilities https://tauri.app/security/capabilities/
 - - [ ] Impl a sys tray so users can close the window while the state and the daemon are staying up https://tauri.app/learn/system-tray/
+- - - [ ] Create a Close option on the sys tray so when closing the app, I can gracefully shutdown thread, files and stuff
 - - [ ] Update the GH actions using https://github.com/tauri-apps/tauri-action
-- - [ ] Use https://tauri.app/plugin/clipboard/ ?
+- - Use https://tauri.app/plugin/clipboard/ ?
 - - [ ] Auto connect on startup like the official mobile app
 - - [ ] Impl drag & drop && devices order
-- - [ ] Save device(s) state to disk periodically
+- - [x] Save device(s) state to disk periodically
 - - [ ] FILL CHANGELOG

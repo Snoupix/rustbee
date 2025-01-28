@@ -5,19 +5,19 @@ mod commands;
 mod state;
 
 use std::collections::HashMap;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use tauri::{Manager, Theme};
-use tokio::runtime;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
+use tokio::{runtime, time};
 
 use rustbee_common::colors::Xy;
-use rustbee_common::constants::{masks, OutputCode, DATA_LEN};
+use rustbee_common::constants::{masks, OutputCode, DATA_LEN, GUI_SAVE_INTERVAL_SECS};
 use rustbee_common::logger::Logger;
-use rustbee_common::storage::Storage;
+use rustbee_common::storage::{SavedDevice, Storage};
 use rustbee_common::utils::launch_daemon;
 
 use state::*;
@@ -62,6 +62,8 @@ fn main() {
 
     drop(devices_guard);
 
+    spawn_storage_sync_thread(&rt, Arc::clone(&devices_state), storage.clone());
+
     let global_state = Arc::new(RwLock::new(GlobalState::new(lowest_brightness, storage)));
 
     tauri::Builder::default()
@@ -89,6 +91,37 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn spawn_storage_sync_thread(
+    rt: &runtime::Runtime,
+    devices_state: Arc<RwLock<AppDevices>>,
+    storage: Storage,
+) {
+    rt.spawn(async move {
+        let devices_state = devices_state;
+        let mut storage = storage;
+
+        loop {
+            time::sleep(Duration::from_millis(GUI_SAVE_INTERVAL_SECS)).await;
+
+            // This is just to avoid overwritting the storage when there's no way it has changed
+            if !HAS_SYNC_LOOP_STARTED.load(Ordering::Relaxed) {
+                continue;
+            }
+
+            let devices = devices_state.read().await;
+
+            storage.set_devices(
+                devices
+                    .iter()
+                    .map(|(addr, device)| (*addr, Some(SavedDevice::from(device))))
+                    .collect(),
+            );
+
+            storage.flush();
+        }
+    });
 }
 
 async fn update_all_devices_state(devices: Arc<RwLock<AppDevices>>) {
