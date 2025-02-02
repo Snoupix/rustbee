@@ -1,0 +1,12 @@
+src-tauri/
+*.vim
+Justfile
+*.d.ts
+*-lock.yaml
+package-lock.json
+yarn.lock
+app.css
+*.md
+.svelte-kit/
+build/
+.pnpm-store/

@@ -9,6 +9,7 @@ use crate::constants::{ADDR_LEN, APP_ID};
 
 type Data = HashMap<[u8; ADDR_LEN], SavedDevice>;
 
+#[derive(Clone)]
 pub struct Storage {
     path: PathBuf,
     data: Data,

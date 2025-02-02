@@ -19,7 +19,7 @@ jobs:
           - path: .
           - path: ./rustbee-common
           - path: ./rustbee-daemon
-          - path: ./rustbee-gui
+          - path: ./rustbee-gui/src-tauri
 
     runs-on: ubuntu-latest
 
@@ -38,7 +38,23 @@ jobs:
 
     - name: Install dependencies
       run: |
-        sudo apt install libdbus-1-dev pkg-config
+        sudo apt update
+        sudo apt install -y libdbus-1-dev pkg-config
+
+    - name: Install dependencies for Tauri
+      if: matrix.directories.path == './rustbee-gui/src-tauri'
+      run: |
+        sudo apt install -y \
+        libglib2.0-dev \
+        libwebkit2gtk-4.1-dev \
+        build-essential \
+        curl \
+        wget \
+        file \
+        libxdo-dev \
+        libssl-dev \
+        libayatana-appindicator3-dev \
+        librsvg2-dev
 
     - name: Lint and Check every Rust dir with Clippy
       working-directory: ${{ matrix.directories.path }}

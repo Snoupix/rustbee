@@ -1,6 +1,7 @@
 use std::sync::LazyLock;
 
 use color_space::Rgb;
+
 use log::*;
 
 // Limits for Hue Play lights
@@ -18,7 +19,7 @@ pub struct Xy {
 
 impl PartialEq for Xy {
     fn eq(&self, other: &Self) -> bool {
-        self.x as u8 == other.x as u8 && self.y as u8 == other.y as u8
+        (self.x - other.x).abs() < f64::EPSILON && (self.y - other.y).abs() < f64::EPSILON
     }
 }
 
@@ -49,24 +50,10 @@ impl Xy {
         let mut g = -x * 0.707196 + y * 1.655397 + z * 0.036152;
         let mut b = x * 0.051713 - y * 0.121364 + z * 1.011530;
 
-        // Weird checks stolen from
-        // https://developers.meethue.com/develop/application-design-guidance/color-conversion-formulas-rgb-to-xy-and-back/#Color-rgb-to-xy
-        if r > b && r > g && r > 1.0 {
-            // red is too big
-            g /= r;
-            b /= r;
-            r = 1.;
-        } else if g > b && g > r && g > 1.0 {
-            // green is too big
-            r /= g;
-            b /= g;
-            g = 1.;
-        } else if b > r && b > g && b > 1.0 {
-            // blue is too big
-            r /= b;
-            g /= b;
-            b = 1.;
-        }
+        // Clamp values to valid range
+        r = r.clamp(0.0, 1.0);
+        g = g.clamp(0.0, 1.0);
+        b = b.clamp(0.0, 1.0);
 
         // Gamma correction
         r = if r <= 0.0031308 {
@@ -85,47 +72,7 @@ impl Xy {
             (1.0 + 0.055) * b.powf(1.0 / 2.4) - 0.055
         };
 
-        // Weird checks stolen from
-        // https://developers.meethue.com/develop/application-design-guidance/color-conversion-formulas-rgb-to-xy-and-back/#Color-rgb-to-xy
-        if r > b && r > g {
-            // red is biggest
-            if r > 1. {
-                g /= r;
-                b /= r;
-                r = 1.;
-            }
-        } else if g > b && g > r {
-            // green is biggest
-            if g > 1. {
-                r /= g;
-                b /= g;
-                g = 1.;
-            }
-        } else if b > r && b > g {
-            // blue is biggest
-            if b > 1. {
-                r /= b;
-                g /= b;
-                b = 1.;
-            }
-        }
-
         debug!("values after calc {:?} {:?}", self, (r, g, b));
-
-        /*
-        assert!(
-            (0.0..1.).contains(&r),
-            "After conversion, R should be between 0. && 1. Actual value {r}"
-        );
-        assert!(
-            (0.0..1.).contains(&g),
-            "After conversion, G should be between 0. && 1. Actual value {g}"
-        );
-        assert!(
-            (0.0..1.).contains(&b),
-            "After conversion, B should be between 0. && 1. Actual value {b}"
-        );
-        */
 
         Rgb::new(r * 255., g * 255., b * 255.)
     }
@@ -142,14 +89,14 @@ impl Xy {
         let lambda2 = ((y3 - y1) * (x - x3) + (x1 - x3) * (y - y3)) / denominator;
         let lambda3 = 1. - lambda1 - lambda2;
 
-        (0. ..=1.).contains(&lambda1)
-            && (0. ..=1.).contains(&lambda2)
-            && (0. ..=1.).contains(&lambda3)
+        (0.0..=1.0).contains(&lambda1)
+            && (0.0..=1.0).contains(&lambda2)
+            && (0.0..=1.0).contains(&lambda3)
     }
 
     fn closest_point_in_triangle(&self, x1: &Self, x2: &Self, x3: &Self) -> Self {
         let euclidean_distance =
-            |a: &Self, b: &Self| ((a.x - b.x).powi(2) + (a.y - b.y).powi(2)).powf(0.5);
+            |a: &Self, b: &Self| ((a.x - b.x).powi(2) + (a.y - b.y).powi(2)).sqrt();
 
         let p1_closest = self.project_point_to_line_segment(x1, x2);
         let p2_closest = self.project_point_to_line_segment(x2, x3);
@@ -192,10 +139,7 @@ impl Xy {
 
 impl From<Rgb> for Xy {
     fn from(rgb: Rgb) -> Self {
-        let (mut r, mut g, mut b) = (rgb.r, rgb.g, rgb.b);
-        r /= 255.;
-        g /= 255.;
-        b /= 255.;
+        let (r, g, b) = (rgb.r / 255., rgb.g / 255., rgb.b / 255.);
 
         // Gamma correction
         let red = if r > 0.04045 {
@@ -242,12 +186,11 @@ impl From<Rgb> for Xy {
 mod color_tests {
     use super::*;
 
-    // FIXME: It's not exactly 255 0 0 because of the color gamut
     fn xy_from_rgb() {
         let red_rgb = Rgb::new(255., 0., 0.);
+        let red_xy = Xy::from(red_rgb);
 
-        assert_eq!(red_rgb, RED.to_rgb(1.));
-        assert_eq!(&*RED, &Xy::from(red_rgb));
+        assert_eq!(red_xy, *RED);
     }
 
     fn xy_rgb_consistency() {

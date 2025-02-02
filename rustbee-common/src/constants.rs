@@ -7,11 +7,17 @@ pub const HUE_BAR_1_ADDR: [u8; ADDR_LEN] = [0xE8, 0xD4, 0xEA, 0xC4, 0x62, 0x00];
 pub const HUE_BAR_2_ADDR: [u8; ADDR_LEN] = [0xEC, 0x27, 0xA7, 0xD6, 0x5A, 0x9C];
 
 // Thanks to https://gist.github.com/shinyquagsire23/f7907fdf6b470200702e75a30135caf3 for the UUIDs
+// Also https://gist.github.com/lemmi/5adfdd2dadd744c553157a2546fc4572 for his/her fork
 pub const LIGHT_SERVICES_UUID: Uuid = uuid!("932c32bd-0000-47a2-835a-a8d455b859dd");
 pub const POWER_UUID: Uuid = uuid!("932c32bd-0002-47a2-835a-a8d455b859dd");
 pub const BRIGHTNESS_UUID: Uuid = uuid!("932c32bd-0003-47a2-835a-a8d455b859dd");
+/// **UNTESTED** Color Temperature in Mired (1000000/T, 154 (6500K) - 455 (2200K), 2 bytes little endian)
 pub const TEMPERATURE_UUID: Uuid = uuid!("932c32bd-0004-47a2-835a-a8d455b859dd");
 pub const COLOR_UUID: Uuid = uuid!("932c32bd-0005-47a2-835a-a8d455b859dd");
+/// This one appears to make a flash (blink) on 0x01, a contiuous flashing on 0x02, stops on 0x00 and appears to do nothing else
+pub const FLASH_UUID: Uuid = uuid!("932c32bd-0006-47a2-835a-a8d455b859dd");
+/// **UNTESTED** Everything type+length+value sequences
+pub const STATE_UUID: Uuid = uuid!("932c32bd-0007-47a2-835a-a8d455b859dd");
 pub const MISC_SERVICES_UUID: Uuid = uuid!("0000180a-0000-1000-8000-00805f9b34fb");
 pub const MODEL_UUID: Uuid = uuid!("00002a24-0000-1000-8000-00805f9b34fb");
 pub const MANUFACTURER_UUID: Uuid = uuid!("00002a29-0000-1000-8000-00805f9b34fb");

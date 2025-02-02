@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+	font-family: "Monaspace-Krypton";
+	src: url("/MonaspaceKrypton-Var.ttf") format("truetype-variations");
+}
+
+* {
+	margin: 0;
+	padding: 0;
+
+	line-height: 24px;
+	font-weight: 400;
+
+	font-family: "Monaspace-Krypton", Helvetica, Arial, monospace, sans-serif;
+}
+
+.button {
+	@apply outline-none px-4 py-2 rounded-xl border border-extra hover:border-primary hover:shadow-extra hover:shadow-xl transition-all duration-300;
+}
