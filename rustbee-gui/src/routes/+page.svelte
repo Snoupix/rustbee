@@ -7,7 +7,7 @@
 	import Header from "$/components/header.svelte";
 	import Subheader from "$/components/subheader.svelte";
 	import Device from "$/components/device.svelte";
-	import { call, error, devices, update_devices, fetch_initial_state, log } from "$/lib/stores/caller";
+	import { call, error, devices, update_devices, fetch_initial_state, log, app_state } from "$/lib/stores/caller";
 	import { log_level_e, rust_fn_e } from "$/lib/types";
 
 	import type { DevicesPayload } from "$/lib/types";
@@ -22,11 +22,13 @@
 			return;
 		}
 
+		app_state.subscribe(state => console.log("stateupdate", state));
+
 		await fetch_initial_state();
 		await update_devices();
 
 		state_unlisten = await event.listen("device_sync", async event => {
-			await log(JSON.stringify(event.payload), log_level_e.info);
+			// await log(JSON.stringify(event.payload), log_level_e.info);
 			await update_devices(event.payload as DevicesPayload);
 		});
 	});

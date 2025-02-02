@@ -2,6 +2,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures::StreamExt as _;
 use serde_json::json;
 use tauri::Emitter as _;
 use tauri::{AppHandle, State};
@@ -12,11 +13,12 @@ use tokio::time;
 use rustbee_common::color_space::Rgb;
 use rustbee_common::colors::Xy;
 use rustbee_common::constants::{masks, ADDR_LEN};
+use rustbee_common::device::HueDevice;
 use rustbee_common::logger::*;
 
 use crate::{
     update_all_devices_state, update_device_state, AppDevices, GlobalState as Global,
-    ParsedAppDevices, DEVICE_STATE_UPDATE_SECS, HAS_SYNC_LOOP_STARTED,
+    ParsedAppDevices, DEVICE_STATE_UPDATE_SECS, HAS_SYNC_LOOP_STARTED, NAME_THREAD_ID,
 };
 
 type GlobalState<'a> = State<'a, Arc<RwLock<Global>>>;
@@ -77,6 +79,8 @@ pub async fn init(
 
                 update_device_state(device).await;
 
+                // TODO: Maybe figure out a way to get active clients and turn
+                // HAS_SYNC_LOOP_STARTED to false when it goes to 0 + break
                 if let Err(err) = handle.emit(
                     "device_sync",
                     json!({
@@ -92,6 +96,45 @@ pub async fn init(
     });
 
     Ok(global_state.read().await.clone())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn fetch_bt_devices(
+    handle: AppHandle,
+    runtime: RuntimeState<'_>,
+    global_state: GlobalState<'_>,
+    name: String,
+) -> Result<u8, Error> {
+    let id = NAME_THREAD_ID.load(Ordering::Relaxed);
+    NAME_THREAD_ID.store(id + 1, Ordering::SeqCst);
+    let state = Arc::clone(&global_state);
+
+    runtime.spawn(async move {
+        let mut stream = HueDevice::search_by_name(&name).await;
+
+        while let Some(device) = stream.next().await {
+            if let Err(err) = handle.emit(&format!("bt_stream_{id}_data"), json!(device)) {
+                error!("Failed to send \"bt_stream_{id}_data\" event to all targets: {err}");
+            }
+
+            state.write().await.devices_found.push(device);
+        }
+
+        NAME_THREAD_ID.store(NAME_THREAD_ID.load(Ordering::Relaxed) - 1, Ordering::SeqCst);
+
+        if let Err(err) = handle.emit(&format!("bt_stream_{id}_end"), ()) {
+            error!("Failed to send \"bt_stream_{id}_end\" event to all targets: {err}");
+        }
+    });
+
+    Ok(id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn clear_devices_found(global_state: GlobalState<'_>) -> Result<(), ()> {
+    global_state.write().await.devices_found.clear();
+
+    Ok(())
 }
 
 #[tauri::command(rename_all = "snake_case")]

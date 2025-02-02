@@ -19,7 +19,7 @@ jobs:
           - path: .
           - path: ./rustbee-common
           - path: ./rustbee-daemon
-          - path: ./rustbee-gui
+          - path: ./rustbee-gui/src-tauri
 
     runs-on: ubuntu-latest
 

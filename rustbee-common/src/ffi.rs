@@ -4,6 +4,8 @@ use std::sync::OnceLock;
 use interprocess::local_socket::Stream;
 use tokio::runtime::{Builder, Runtime};
 
+use crate::color_space::Rgb;
+use crate::colors::Xy;
 use crate::constants::{masks::*, ADDR_LEN, DATA_LEN, OUTPUT_LEN, SET};
 use crate::device::{CmdOutput, HueDevice, EMPTY_BUFFER, FFI};
 use crate::utils;
@@ -189,6 +191,31 @@ extern "C" fn get_brightness(device_ptr: *mut Device) -> uint8_t {
     let bit = output.1[0];
 
     ((bit as f32 / 255.) * 100.) as _
+}
+#[no_mangle]
+extern "C" fn set_color_rgb(device_ptr: *mut Device, r: uint8_t, g: uint8_t, b: uint8_t) -> bool {
+    if device_ptr.is_null() {
+        eprintln!("[ERROR] Device pointer is null");
+        return false;
+    }
+
+    let device = unsafe { &mut *device_ptr };
+
+    let xy = Xy::from(Rgb::new(r.into(), g.into(), b.into()));
+    let scaled_x = (xy.x * 0xFFFF as f64) as u16;
+    let scaled_y = (xy.y * 0xFFFF as f64) as u16;
+
+    let mut buf = EMPTY_BUFFER;
+    buf[0] = SET;
+    buf[1] = (scaled_x & 0xFF) as _;
+    buf[2] = (scaled_x >> 8) as _;
+    buf[3] = (scaled_y & 0xFF) as _;
+    buf[4] = (scaled_y >> 8) as _;
+
+    device
+        .send_to_socket(CONNECT | COLOR_RGB, buf)
+        .0
+        .is_success()
 }
 
 #[no_mangle]

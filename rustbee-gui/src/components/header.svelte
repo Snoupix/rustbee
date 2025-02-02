@@ -1,154 +1,27 @@
 <script lang="ts">
 	import { onDestroy, onMount } from "svelte";
 	import { fade } from "svelte/transition";
+	import { event } from "@tauri-apps/api";
 	import { Lightbulb, BluetoothSearching } from "lucide-svelte";
 
-	import { is_loading } from "$/lib/stores/caller";
+	import { app_state, call, is_loading } from "$/lib/stores/caller";
+	import { rust_fn_e } from "$/lib/types";
 	import { debounce } from "$/lib/utils";
+	import _gradients from "$/lib/gradients";
 
-	let search_input: HTMLInputElement | null = $state(null);
+	import type { DeviceFound } from "$lib/types";
+
+	// TODO: Move device stream logic to a child component and give it search_input props
+
+	let is_searching = $state(false);
+	let is_stream_finished = $state(false);
+	let search_input_ref: HTMLInputElement | null = $state(null);
+	let search_input_value = $state("");
+	let stream_unlisten_evt: (() => void) | null = $state(null);
+	let end_stream_unlisten_evt: (() => void) | null = $state(null);
 	let gradient_idx = $state(0);
 
-	const gradients: Record<string, string> = {
-		rainbow: `linear-gradient(
-          to right,
-          #FF0080,
-          #FF00FF,
-          #00FFFF,
-          #FF0080,
-          #FF00FF,
-          #00FFFF,
-          #FF0080
-        )`,
-		sunset: `linear-gradient(
-          to right,
-          #FF512F,
-          #FF9671,
-          #FFC75F,
-          #FF512F,
-          #FF9671,
-          #FFC75F,
-          #FF512F
-        )`,
-		ocean: `linear-gradient(
-          to right,
-          #0083B0,
-          #00B4DB,
-          #00F2FE,
-          #0083B0,
-          #00B4DB,
-          #00F2FE,
-          #0083B0
-        )`,
-		neon: `linear-gradient(
-          to right,
-          #FF1493,
-          #00FF00,
-          #00FFFF,
-          #FF1493,
-          #00FF00,
-          #00FFFF,
-          #FF1493
-        )`,
-		cyberpunk: `linear-gradient(
-          to right,
-          #FF00FF,
-          #00FFFF,
-          #FF00FF,
-          #00FFFF,
-          #FF00FF
-        )`,
-		synthwave: `linear-gradient(
-          to right,
-          #FF00FF,
-          #00FFFF,
-          #FF00FF,
-          #00FFFF,
-          #FF00FF,
-          #00FFFF,
-          #FF00FF
-        )`,
-		neon_fire: `linear-gradient(
-          to right,
-          #FF0000,
-          #FF00FF,
-          #FFFF00,
-          #FF0000,
-          #FF00FF,
-          #FFFF00,
-          #FF0000
-        )`,
-		electric_blue: `linear-gradient(
-          to right,
-          #00FFFF,
-          #0099FF,
-          #00FF00,
-          #00FFFF,
-          #0099FF,
-          #00FF00,
-          #00FFFF
-        )`,
-		plasma: `linear-gradient(
-          to right,
-          #FF1493,
-          #FF00FF,
-          #00FFFF,
-          #FF1493,
-          #FF00FF,
-          #00FFFF,
-          #FF1493
-        )`,
-		candy: `linear-gradient(
-          to right,
-          #FF0080,
-          #FF00FF,
-          #00FFFF,
-          #FF0080,
-          #FF00FF,
-          #00FFFF,
-          #FF0080
-        )`,
-		toxic: `linear-gradient(
-          to right,
-          #00FF00,
-          #FFFF00,
-          #00FF99,
-          #00FF00,
-          #FFFF00,
-          #00FF99,
-          #00FF00
-        )`,
-		ultraviolet: `linear-gradient(
-          to right,
-          #9933FF,
-          #FF00FF,
-          #CC00FF,
-          #9933FF,
-          #FF00FF,
-          #CC00FF,
-          #9933FF
-        )`,
-		solar_flare: `linear-gradient(
-          to right,
-          #FF4400,
-          #FFFF00,
-          #FF8800,
-          #FF4400,
-          #FFFF00,
-          #FF8800,
-          #FF4400
-        )`,
-		neon_dream: `linear-gradient(
-          to right,
-          #FF0099,
-          #00FFFF,
-          #FF00FF,
-          #FF0099,
-          #00FFFF,
-          #FF00FF,
-          #FF0099
-        )`,
-	} as const;
+	const gradients: Record<string, string> = _gradients;
 
 	const gradients_names = Object.keys(gradients);
 
@@ -160,7 +33,14 @@
 		is_loading.subscribe(bool => !bool && shuffle_debounce(undefined));
 	});
 
-	onDestroy(clear_debounce);
+	onDestroy(() => {
+		clear_debounce();
+
+		stream_unlisten_evt?.();
+		end_stream_unlisten_evt?.();
+	});
+
+	$inspect(search_input_value);
 
 	function shuffle_gradient_index() {
 		const old = gradient_idx;
@@ -173,8 +53,56 @@
 	}
 
 	function focus_search() {
-		search_input?.focus();
+		search_input_ref?.focus();
 	}
+
+	function close_device_list() {
+		is_searching = false;
+		is_stream_finished = false;
+
+        app_state.update(state => {
+            if (state == null) return state;
+
+            state.devices_found = [];
+            return state;
+        });
+	}
+
+	async function search_devices() {
+		if (is_searching) return;
+
+		is_searching = true;
+
+		const id = await call(rust_fn_e.start_bt_stream, { name: search_input_value });
+
+		stream_unlisten_evt = await event.listen(`bt_stream_${id}_data`, event => {
+			const device = event.payload as DeviceFound;
+
+			app_state.update(state => {
+                const addr_count = device.address.reduce((a, b) => a + b);
+				if (
+					state?.devices_found.some(
+						d => d.address.reduce((a, b) => a + b) == addr_count
+					)
+				) {
+					return state;
+				}
+
+				state?.devices_found.push(device);
+				return state;
+			});
+		});
+
+		end_stream_unlisten_evt = await event.listen(`bt_stream_${id}_end`, () => {
+			console.log("end stream");
+			is_stream_finished = true;
+			stream_unlisten_evt?.();
+		});
+	}
+
+    function add_device(address: Array<number>) {
+        // TODO
+    }
 </script>
 
 <header>
@@ -186,12 +114,32 @@
 		<!-- svelte-ignore a11y_no_static_element_interactions,a11y_click_events_have_key_events -->
 		<div class="search" onclick={focus_search}>
 			<span>Search:</span>
-			<input type="text" bind:this={search_input} />
-			<div class="bt-wrapper" title="Click to search BT devices with a (partial) name">
+			<input type="text" bind:this={search_input_ref} bind:value={search_input_value} disabled={is_searching} />
+			<div class="bt-wrapper" title="Click to search BT devices with a (partial) name" onclick={search_devices}>
 				<BluetoothSearching class="bt" />
 			</div>
 		</div>
 	</nav>
+	{#if is_searching && $app_state != null}
+		{#if is_stream_finished}
+			<button class="close_btn" onclick={close_device_list}>X</button>
+		{/if}
+		<div class="search_section">
+			{#key $app_state}
+				{#each $app_state.devices_found as device}
+					<button
+						onclick={() => add_device(device.address)}
+						>{device.name} - {device.address
+							.map(x => x.toString(16).toUpperCase().padStart(2, "0"))
+							.join(":")}</button>
+				{/each}
+			{/key}
+			{#if !is_stream_finished}
+				<!-- TODO: Spinner -->
+				<span>Loading...</span>
+			{/if}
+		</div>
+	{/if}
 </header>
 {#if $is_loading}
 	<div transition:fade class="rainbow-loader" style="--gradient: {gradients[gradients_names[gradient_idx]]};"></div>
@@ -199,7 +147,7 @@
 
 <style lang="postcss">
 	header {
-		@apply flex flex-col justify-center h-header w-full p-10 border-b-2 border-b-extra;
+		@apply relative flex flex-col justify-center h-header w-full p-10 border-b-2 border-b-extra;
 
 		nav {
 			@apply flex flex-row justify-between items-center text-4xl;
@@ -235,6 +183,14 @@
 					}
 				}
 			}
+		}
+
+		.close_btn {
+			@apply absolute top-0 right-0 w-12 h-12;
+		}
+
+		.search_section {
+			@apply w-full h-auto max-h-[20vh] flex flex-col justify-center items-center flex-wrap;
 		}
 	}
 

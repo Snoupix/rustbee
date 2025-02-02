@@ -5,7 +5,7 @@ mod commands;
 mod state;
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -27,6 +27,7 @@ const DEVICE_STATE_UPDATE_SECS: u64 = 10;
 const DEBOUNCE_SECS: u64 = 5;
 
 static LOGGER: Logger = Logger::new("Rustbee-GUI", false);
+static NAME_THREAD_ID: AtomicU8 = AtomicU8::new(1);
 static HAS_SYNC_LOOP_STARTED: AtomicBool = AtomicBool::new(false);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -88,6 +89,8 @@ fn main() {
             commands::init,
             commands::set_device_colors,
             commands::set_devices_colors,
+            commands::fetch_bt_devices,
+            commands::clear_devices_found,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

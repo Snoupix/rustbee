@@ -23,6 +23,7 @@ bool try_disconnect(Device*);
 
 bool set_power(Device*, uint8_t);
 bool set_brightness(Device*, uint8_t);
+bool set_color_rgb(Device*, uint8_t, uint8_t, uint8_t);
 
 bool get_power(Device*);
 uint8_t get_brightness(Device*);

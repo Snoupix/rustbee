@@ -62,7 +62,7 @@
 	}
 
 	async function update_colors(hex: string, rgba: RgbaColor) {
-        if (!is_ready) return;
+		if (!is_ready) return;
 
 		current_color = [rgba.r, rgba.g, rgba.b];
 
@@ -96,6 +96,7 @@
 
 <section>
 	<!-- TODO: Impl those anims -->
+	<!-- TODO: Fix styling, center color-picker -->
 	<button
 		class={[is_clicked && are_lights_on && "green-anim", is_clicked && !are_lights_on && "red-anim"]}
 		onmousedown={() => (is_clicked = true)}

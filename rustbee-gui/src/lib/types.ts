@@ -49,4 +49,5 @@ export const rust_fn_e = Object.freeze({
 	fetch_init_state: "init",
 	set_colors: "set_device_colors",
 	set_colors_all: "set_devices_colors",
+	start_bt_stream: "fetch_bt_devices",
 });
