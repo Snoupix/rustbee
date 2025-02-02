@@ -15,7 +15,7 @@ env:
 
 jobs:
   release_cli:
-    if: github.event.pull_request.head.ref !~ 'dependabot/.*'
+    if: "!startsWith(github.event.pull_request.head.ref, 'dependabot')"
     strategy:
       matrix:
         platform:
@@ -80,7 +80,7 @@ jobs:
       # TODO: Change author to houseabsolute if/when PR https://github.com/houseabsolute/actions-rust-release/pull/2
       # is merged. Don't forget below one too
       - name: Publish artifacts and release
-        uses: houseabsolute/actions-rust-release@v3
+        uses: houseabsolute/actions-rust-release@v0
         with:
           working-directory: .
           executable-name: ${{ matrix.platform.cli_bin_no_ext || matrix.platform.cli_bin }}
@@ -92,7 +92,7 @@ jobs:
             Justfile
 
   # release_gui:
-  #   if: github.event.pull_request.head.ref !~ 'dependabot/.*'
+  #   if: "!startsWith(github.event.pull_request.head.ref, 'dependabot')"
   #   # Copy of the above strategy
   #   strategy:
   #     matrix:
@@ -147,7 +147,7 @@ jobs:
   #         args: "--locked --release"
   #
   #     - name: Publish artifacts and release
-  #       uses: houseabsolute/actions-rust-release@v3
+  #       uses: houseabsolute/actions-rust-release@v0
   #       with:
   #         working-directory: ./rustbee-gui
   #         executable-name: ${{ matrix.platform.gui_bin_no_ext || matrix.platform.gui_bin }}
@@ -159,7 +159,7 @@ jobs:
   #           ../Justfile
 
   release_c_lib:
-    if: github.event.pull_request.head.ref !~ 'dependabot/.*'
+    if: "!startsWith(github.event.pull_request.head.ref, 'dependabot')"
     # Copy of the above strategy
     strategy:
       matrix:
