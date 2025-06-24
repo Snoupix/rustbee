@@ -138,6 +138,11 @@ install:
     {{DAEMON}} install
     {{GUI}} install
 
+@clean:
+    cargo clean
+    cd rustbee-gui && cargo clean
+    cd rustbee-daemon && cargo clean
+
 # This avoids failing so it can be used even if GUI isn't installed for e.g.
 [doc("Optional flag: --preserve-logs")]
 [confirm("Are you sure you want to uninstall everything ? (y/N)")]

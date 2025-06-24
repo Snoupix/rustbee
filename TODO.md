@@ -6,6 +6,7 @@
 - [ ] Add a C dyn lib to pre-built releases with the CI and add the header file
 - [ ] Rewrite / Restructure the daemon
 - [ ] Fix the weird serialization bug where it would produce invalid JSON
+- [ ] Fix windows v59 bump => OpenProcess takes a bool and not a BOOL apparently
 - [x] [GUI] Migrate eframe/egui to tauri
 - - [x] Match old state
 - - [ ] Finish features impl
