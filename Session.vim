@@ -56,7 +56,7 @@ badd +19 rustbee-gui/src-tauri/src/state.rs
 badd +98 rustbee-gui/src-tauri/src/commands.rs
 badd +1 rustbee-gui/Justfile
 badd +12 rustbee-gui/src/lib/types.ts
-badd +91 rustbee-gui/src/components/header.svelte
+badd +88 rustbee-gui/src/components/header.svelte
 badd +10 rustbee-gui/tailwind.config.js
 badd +10 rustbee-gui/src/styles/tailwind.css
 badd +4 rustbee-gui/postcss.config.js
@@ -71,13 +71,6 @@ badd +140 rustbee-gui/src/lib/gradients.ts
 argglobal
 %argdel
 edit rustbee-gui/src/components/header.svelte
-wincmd t
-let s:save_winminheight = &winminheight
-let s:save_winminwidth = &winminwidth
-set winminheight=0
-set winheight=1
-set winminwidth=0
-set winwidth=1
 argglobal
 balt rustbee-gui/src/components/device.svelte
 setlocal fdm=manual
@@ -90,12 +83,12 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 80 - ((31 * winheight(0) + 31) / 63)
+let s:l = 125 - ((31 * winheight(0) + 31) / 63)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 80
-normal! 033|
+keepjumps 125
+normal! 044|
 lcd ~/work/rustbee
 tabnext 1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0 && getbufvar(s:wipebuf, '&buftype') isnot# 'terminal'
@@ -104,8 +97,6 @@ endif
 unlet! s:wipebuf
 set winheight=1 winwidth=20
 let &shortmess = s:shortmess_save
-let &winminheight = s:save_winminheight
-let &winminwidth = s:save_winminwidth
 let s:sx = expand("<sfile>:p:r")."x.vim"
 if filereadable(s:sx)
   exe "source " . fnameescape(s:sx)

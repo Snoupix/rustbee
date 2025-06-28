@@ -56,7 +56,7 @@
 		search_input_ref?.focus();
 	}
 
-	function close_device_list() {
+	async function close_device_list() {
 		is_searching = false;
 		is_stream_finished = false;
 
@@ -66,6 +66,8 @@
             state.devices_found = [];
             return state;
         });
+        
+        await call(rust_fn_e.clear_devices_found);
 	}
 
 	async function search_devices() {
@@ -165,6 +167,10 @@
 
 				input {
 					@apply w-5/12 text-primary bg-secondary outline-none;
+
+                    &:disabled {
+                        @apply cursor-not-allowed;
+                    }
 				}
 
 				.bt-wrapper {
