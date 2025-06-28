@@ -1,3 +1,5 @@
+set fallback
+
 [private]
 _default:
     @echo "[ERROR] Just commands must be run on the root of the project"
@@ -8,47 +10,18 @@ _default:
     sudo setcap cap_dac_read_search+ep ./target/release/rustbee-gui
     echo -e "$purple[Rustbee GUI] Finished compiling !$white"
 
-[private]
-build-docker:
-    #!/usr/bin/env bash
-    if [[ $(pwd) != */rustbee ]]; then
-        cd ..
-    fi
-
-    if [[ -f ./rustbee-gui/target/release/rustbee-gui && -f ./rustbee-daemon/target/release/rustbee-daemon ]]; then
-        echo -e "${red}Binaries are already built, you can run \`just install-gui\` to install rustbee GUI$white"
-        exit 1
-    fi
-
-    echo "Compiling Rustbee GUI & its daemon with docker... (feel free to make some coffe)"
-
-    docker run --rm --user root -v {{justfile_dir()}}:/usr/src/rustbee -w /usr/src/rustbee rust:$MSRV-bullseye \
-        bash -c "$docker_base_pkgs && cd rustbee-gui && cargo build --release && cd ../rustbee-daemon && cargo build --release"
-    sudo chown -R $(id -u):$(id -g) ./rustbee-gui/target
-    sudo chown -R $(id -u):$(id -g) ./rustbee-daemon/target
-
-    echo -e "${purple}Done! You can now run \`just install-gui\` to install rustbee GUI$white"
+# TODO
+#[private]
+#build-docker:
 
 [private]
 @debug:
-    cargo watch -d 1.5 -x build -s ./target/debug/rustbee-gui
+    pnpm tauri dev
 
-[private]
-@debug-win dest_path:
-    cargo watch -d 1.5 -x "build --release --target x86_64-pc-windows-gnu" -s "cp ./target/x86_64-pc-windows-gnu/release/rustbee-gui.exe {{ dest_path }}"
+# TODO
+#[private]
+#install:
 
-[private]
-install:
-    #!/usr/bin/env bash
-    if [[ ! -f ./target/release/rustbee-gui || ! -f ../rustbee-daemon/target/release/rustbee-daemon ]]; then
-        echo -e "${red}Binaries are not built, you must run \`just build-gui\` first$white"
-        exit 1
-    fi
-
-    sudo ln -sf $PWD/target/release/rustbee-gui /bin/rustbee-gui
-    echo -e "${purple}Rustbee GUI symlinked to /bin dir$white"
-
-# TODO: add exec to path
 [private]
 @uninstall:
     -cargo clean > /dev/null 2>&1

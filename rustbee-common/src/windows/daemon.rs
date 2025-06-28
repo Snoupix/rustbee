@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use tokio::process::Command as AsyncCommand;
 use tokio::time;
-use windows::Win32::Foundation::{CloseHandle, BOOL, HANDLE};
+use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32, TH32CS_SNAPPROCESS,
 };
@@ -92,7 +92,7 @@ pub fn shutdown_daemon(_force: bool) -> io::Result<()> {
     if let Some(pid) = pid_opt {
         // if force {
         unsafe {
-            let process_handle = werr!(OpenProcess(PROCESS_TERMINATE, BOOL(false as _), pid))?;
+            let process_handle = werr!(OpenProcess(PROCESS_TERMINATE, false, pid))?;
             if process_handle.0.is_null() {
                 return Err(io::Error::new(
                     io::ErrorKind::Other,

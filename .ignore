@@ -1,2 +1,4 @@
 .git/
 target/
+.pnpm-store/
+.zig-cache/
