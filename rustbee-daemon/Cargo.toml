@@ -1,10 +1,10 @@
 [package]
 name = "rustbee-daemon"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 interprocess = { version = "2.2.2", features = ["tokio"] }
-tokio = { version = "1.43.0", features = ["fs", "rt", "macros", "signal", "rt-multi-thread", "time"] }
+tokio = { version = "1.48.0", features = ["fs", "rt", "macros", "signal", "rt-multi-thread", "time"] }
 rustbee-common = { path = "../rustbee-common" }
-futures = "0.3.30"
+futures = "0.3.31"

@@ -230,11 +230,7 @@ impl Command {
                 let (mut x, mut y) = (0., 0.);
 
                 match self {
-                    Self::ColorRgb {
-                        ref r,
-                        ref g,
-                        ref b,
-                    } => {
+                    Self::ColorRgb { r, g, b } => {
                         if r.is_none() || g.is_none() || b.is_none() {
                             read = true;
                         } else {
@@ -273,10 +269,7 @@ impl Command {
                             (x, y) = (xy.x / 100., xy.y / 100.);
                         }
                     }
-                    Self::ColorXy {
-                        x: ref _x,
-                        y: ref _y,
-                    } => {
+                    Self::ColorXy { x: _x, y: _y } => {
                         if _x.is_none() || _y.is_none() {
                             read = true;
                         } else {

@@ -22,7 +22,7 @@ macro_rules! block_on {
 
 macro_rules! gen_free_fn {
     ($name:ident, $type:ty) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         extern "C" fn $name(ptr: *mut $type) {
             if ptr.is_null() {
                 return;
@@ -80,7 +80,7 @@ impl Device {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn new_device(addr_ptr: *const [uint8_t; ADDR_LEN]) -> *mut Device {
     unsafe { Box::into_raw(Device::new(*addr_ptr).boxed()) }
 }
@@ -90,7 +90,7 @@ gen_free_fn!(free_device, Device);
 // For some reason, if this fn is called "connect" it seg faults
 // the program without even calling it, must be conflicting somewhere
 // REASON: https://github.com/rust-lang/rust/issues/28179 fixed in Rust 1.82
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn try_connect(device_ptr: *mut Device) -> bool {
     if device_ptr.is_null() {
         eprintln!("[ERROR] Device pointer is null");
@@ -105,7 +105,7 @@ extern "C" fn try_connect(device_ptr: *mut Device) -> bool {
     device.send_to_socket(CONNECT, buf).0.is_success()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn try_disconnect(device_ptr: *mut Device) -> bool {
     if device_ptr.is_null() {
         eprintln!("[ERROR] Device pointer is null");
@@ -120,7 +120,7 @@ extern "C" fn try_disconnect(device_ptr: *mut Device) -> bool {
     device.send_to_socket(DISCONNECT, buf).0.is_success()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn set_power(device_ptr: *mut Device, state: uint8_t) -> bool {
     if device_ptr.is_null() {
         eprintln!("[ERROR] Device pointer is null");
@@ -136,7 +136,7 @@ extern "C" fn set_power(device_ptr: *mut Device, state: uint8_t) -> bool {
     device.send_to_socket(CONNECT | POWER, buf).0.is_success()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn get_power(device_ptr: *mut Device) -> bool {
     if device_ptr.is_null() {
         eprintln!("[ERROR] Device pointer is null");
@@ -154,7 +154,7 @@ extern "C" fn get_power(device_ptr: *mut Device) -> bool {
     output.1[0] == 1
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn set_brightness(device_ptr: *mut Device, value: uint8_t) -> bool {
     if device_ptr.is_null() {
         eprintln!("[ERROR] Device pointer is null");
@@ -173,7 +173,7 @@ extern "C" fn set_brightness(device_ptr: *mut Device, value: uint8_t) -> bool {
         .is_success()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn get_brightness(device_ptr: *mut Device) -> uint8_t {
     if device_ptr.is_null() {
         eprintln!("[ERROR] Device pointer is null");
@@ -192,7 +192,7 @@ extern "C" fn get_brightness(device_ptr: *mut Device) -> uint8_t {
 
     ((bit as f32 / 255.) * 100.) as _
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn set_color_rgb(device_ptr: *mut Device, r: uint8_t, g: uint8_t, b: uint8_t) -> bool {
     if device_ptr.is_null() {
         eprintln!("[ERROR] Device pointer is null");
@@ -218,7 +218,7 @@ extern "C" fn set_color_rgb(device_ptr: *mut Device, r: uint8_t, g: uint8_t, b: 
         .is_success()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn get_color_rgb(device_ptr: *mut Device) -> *mut [uint8_t; 3] {
     let mut color_buf = Box::new([0; 3]);
 
@@ -244,7 +244,7 @@ extern "C" fn get_color_rgb(device_ptr: *mut Device) -> *mut [uint8_t; 3] {
 
 gen_free_fn!(free_color_rgb, [uint8_t; 3]);
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn get_name(device_ptr: *mut Device) -> *mut [uint8_t; OUTPUT_LEN - 1] {
     let mut name_buf = Box::new([0; OUTPUT_LEN - 1]);
 
@@ -268,12 +268,12 @@ extern "C" fn get_name(device_ptr: *mut Device) -> *mut [uint8_t; OUTPUT_LEN - 1
 
 gen_free_fn!(free_name, [uint8_t; OUTPUT_LEN - 1]);
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn launch_daemon() -> bool {
     block_on!(utils::launch_daemon()).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn shutdown_daemon(force: *const uint8_t) -> bool {
     utils::shutdown_daemon(unsafe { *force == 1 }).is_ok()
 }
