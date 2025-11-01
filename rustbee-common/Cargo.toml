@@ -11,7 +11,7 @@ default = []
 ffi = []
 
 [dependencies]
-bluest = "0.6.7"
+bluest = "0.6.8"
 btleplug = "0.11.7"
 chrono = "0.4.39"
 color_space = "0.5.4"
