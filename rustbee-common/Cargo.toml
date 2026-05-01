@@ -16,7 +16,7 @@ btleplug = "0.11.7"
 chrono = "0.4.39"
 color_space = "0.5.4"
 eframe = { version = "0.29.1", features = ["persistence"] }
-futures = "0.3.30"
+futures = "0.3.32"
 interprocess = { version = "2.2.2", features = ["tokio"] }
 log = "0.4.27"
 serde = "1.0.219"
